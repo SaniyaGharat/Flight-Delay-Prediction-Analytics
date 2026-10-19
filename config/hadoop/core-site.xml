@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?xml-stylesheet type="text/xsl" href="configuration.xsl"?>
+<configuration>
+    <!-- Default File System URI: NameNode IPC endpoint -->
+    <property>
+        <name>fs.defaultFS</name>
+        <value>hdfs://localhost:9000</value>
+        <description>The name of the default file system. A URI whose scheme and authority determine the FileSystem implementation.</description>
+    </property>
+
+    <!-- Hadoop temporary directory -->
+    <property>
+        <name>hadoop.tmp.dir</name>
+        <value>/home/${user.name}/hadoop_tmp</value>
+        <description>A base for other temporary directories.</description>
+    </property>
+</configuration>

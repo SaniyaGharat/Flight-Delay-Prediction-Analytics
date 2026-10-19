@@ -1,0 +1,41 @@
+# Python & Virtual Environments
+.venv/
+venv/
+test_venv/
+ENV/
+env/
+.tools/
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyd
+
+# Spark & Hadoop
+metastore_db/
+derby.log
+spark-warehouse/
+*.sparkStaging/
+*.crc
+
+# Project data & outputs
+data/raw/*
+!data/raw/.gitkeep
+output/powerbi/*
+!output/powerbi/.gitkeep
+logs/*
+!logs/.gitkeep
+*.log
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+*/.ipynb_checkpoints/*
+
+# IDEs & OS
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Environment variables
+.env
+.env.local

@@ -1,0 +1,13 @@
+# Core Big Data & Spark (compatible with Java 17 LTS)
+pyspark==3.5.3
+
+# Data Processing & Storage
+pandas>=2.2.0
+pyarrow>=17.0.0
+
+# Visualization & Reporting
+matplotlib>=3.9.0
+
+# Configuration & Utilities
+python-dotenv>=1.0.1
+pyyaml>=6.0.2

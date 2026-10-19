@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?xml-stylesheet type="text/xsl" href="configuration.xsl"?>
+<configuration>
+    <!-- Block replication set to 1 for pseudo-distributed single-node cluster -->
+    <property>
+        <name>dfs.replication</name>
+        <value>1</value>
+        <description>Default block replication for single-machine development</description>
+    </property>
+
+    <!-- NameNode metadata directory -->
+    <property>
+        <name>dfs.namenode.name.dir</name>
+        <value>file:///home/${user.name}/hadoop_data/hdfs/namenode</value>
+        <description>Path on the local filesystem where the NameNode stores the namespace and transactions</description>
+    </property>
+
+    <!-- DataNode block directory -->
+    <property>
+        <name>dfs.datanode.data.dir</name>
+        <value>file:///home/${user.name}/hadoop_data/hdfs/datanode</value>
+        <description>Comma separated list of paths on the local filesystem where a DataNode should store its blocks</description>
+    </property>
+
+    <!-- Web UI bind address (port 9870 for Hadoop 3.x) -->
+    <property>
+        <name>dfs.namenode.http-address</name>
+        <value>0.0.0.0:9870</value>
+        <description>The address and the base port on which the dfs NameNode Web UI will listen</description>
+    </property>
+
+    <!-- Disable permission checking for local lab development -->
+    <property>
+        <name>dfs.permissions.enabled</name>
+        <value>false</value>
+    </property>
+</configuration>

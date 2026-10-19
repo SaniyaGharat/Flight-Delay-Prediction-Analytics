@@ -1,0 +1,25 @@
+# Flight Delay Prediction and Analytics Configuration
+
+app:
+  name: "FlightDelayPredictionAndAnalytics"
+  environment: "development"
+
+spark:
+  master: "local[*]"
+  driver_memory: "4g"
+  executor_memory: "4g"
+  shuffle_partitions: 8
+  default_fs: "hdfs://localhost:9000"
+
+hdfs:
+  namenode_uri: "hdfs://localhost:9000"
+  base_dir: "/user/${USER}/flight_delay"
+  raw_dir: "/user/${USER}/flight_delay/raw"
+  processed_dir: "/user/${USER}/flight_delay/processed"
+  export_dir: "/user/${USER}/flight_delay/export"
+  smoke_test_dir: "/user/${USER}/flight_delay/tmp_smoke_test"
+
+local_paths:
+  raw_data: "data/raw"
+  output_powerbi: "output/powerbi"
+  logs: "logs"

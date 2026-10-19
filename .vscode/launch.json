@@ -1,0 +1,44 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Python: Run Current File",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${file}",
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}",
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}",
+        "JAVA_HOME": "/usr/lib/jvm/java-17-openjdk-amd64",
+        "HADOOP_HOME": "/home/saniya/hadoop"
+      }
+    },
+    {
+      "name": "PySpark: Run Smoke Test (test_setup.py)",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/src/utils/test_setup.py",
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}",
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}",
+        "JAVA_HOME": "/usr/lib/jvm/java-17-openjdk-amd64",
+        "HADOOP_HOME": "/home/saniya/hadoop"
+      }
+    },
+    {
+      "name": "PySpark: Test SparkSession Builder",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/src/utils/spark_session.py",
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}",
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}",
+        "JAVA_HOME": "/usr/lib/jvm/java-17-openjdk-amd64",
+        "HADOOP_HOME": "/home/saniya/hadoop"
+      }
+    }
+  ]
+}
