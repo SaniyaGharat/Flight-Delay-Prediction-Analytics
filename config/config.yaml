@@ -13,25 +13,59 @@ spark:
 
 hdfs:
   namenode_uri: "hdfs://localhost:9000"
-  base_dir: "/user/${USER}/flight_delay"
-  raw_dir: "/user/${USER}/flight_delay/raw"
-  processed_dir: "/user/${USER}/flight_delay/processed"
-  export_dir: "/user/${USER}/flight_delay/export"
-  smoke_test_dir: "/user/${USER}/flight_delay/tmp_smoke_test"
+  replication: 1
+  base_dir: "/user/saniya/flight_delay"
+  raw_dir: "/user/saniya/flight_delay/raw"
+  processed_dir: "/user/saniya/flight_delay/processed"
+  export_dir: "/user/saniya/flight_delay/export"
+  smoke_test_dir: "/user/saniya/flight_delay/tmp_smoke_test"
+  paths:
+    base: "/user/saniya/flight_delay"
+    raw: "/user/saniya/flight_delay/raw"
+    processed: "/user/saniya/flight_delay/processed"
+    export: "/user/saniya/flight_delay/export"
+    smoke_test: "/user/saniya/flight_delay/tmp_smoke_test"
+    flights_subfolder: "/user/saniya/flight_delay/raw/flights"
+    airports_subfolder: "/user/saniya/flight_delay/raw/airports"
+    airlines_subfolder: "/user/saniya/flight_delay/raw/airlines"
+    flights: "/user/saniya/flight_delay/raw/flights/flights.csv"
+    airports: "/user/saniya/flight_delay/raw/airports/airports.csv"
+    airlines: "/user/saniya/flight_delay/raw/airlines/airlines.csv"
+
+raw_data:
+  local_dir: "data/raw"
+  files:
+    flights: "flights.csv"
+    airports: "airports.csv"
+    airlines: "airlines.csv"
+
+processed_paths:
+  flights_clean: "/user/saniya/flight_delay/processed/flights_clean"
+  airports_clean: "/user/saniya/flight_delay/processed/airports_clean"
+  airlines_clean: "/user/saniya/flight_delay/processed/airlines_clean"
+  airport_id_map: "/user/saniya/flight_delay/processed/airport_id_map"
+  flights_enriched: "/user/saniya/flight_delay/processed/flights_enriched"
+  dim_date: "/user/saniya/flight_delay/processed/dim_date"
+  analytics_dir: "/user/saniya/flight_delay/processed/analytics"
+
+analytics_thresholds:
+  min_flown_airport: 1000
+  min_flown_route: 500
 
 holidays_2015:
-  - "2015-01-01"
-  - "2015-01-19"
-  - "2015-02-16"
-  - "2015-05-25"
-  - "2015-07-03"  # Independence Day (observed)
-  - "2015-09-07"
-  - "2015-10-12"
-  - "2015-11-11"
-  - "2015-11-26"
-  - "2015-12-25"
+  - "2015-01-01"  # New Year's Day
+  - "2015-01-19"  # Martin Luther King Jr. Day
+  - "2015-02-16"  # Washington's Birthday (Presidents' Day)
+  - "2015-05-25"  # Memorial Day
+  - "2015-07-03"  # Independence Day (Observed)
+  - "2015-09-07"  # Labor Day
+  - "2015-10-12"  # Columbus Day
+  - "2015-11-11"  # Veterans Day
+  - "2015-11-26"  # Thanksgiving Day
+  - "2015-12-25"  # Christmas Day
 
 local_paths:
   raw_data: "data/raw"
   output_powerbi: "output/powerbi"
+  output_analytics: "output/analytics"
   logs: "logs"

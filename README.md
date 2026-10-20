@@ -113,6 +113,11 @@ Phase 3 establishes an enterprise-grade cleaned data layer in HDFS `processed/`:
    - Result: **8 / 8 Checks PASSED**.
 
 ### Phase 4: Feature Engineering, Dimension Modeling & Enrichment
+
+> [!IMPORTANT]
+> **Timezone Semantics & Caveat (`SCHED_DEP_TS`)**:
+> `SCHED_DEP_TS` represents the scheduled local wall-clock departure timestamp constructed from `FLIGHT_DATE` and `SCHEDULED_DEPARTURE`. Because the raw DOT BTS dataset provides no airport timezone offsets, `SCHED_DEP_TS` is stored without timezone offset conversion, while the Spark runtime operates under session timezone `UTC`. Direct duration math across different airports or cross-timezone comparisons using this column is invalid without explicitly joining external timezone lookup tables.
+
 Phase 4 produces the production-ready enriched analytics layer and date dimension:
 1. **Host Hardware Tuning (`.wslconfig`)**:
    - Upgraded WSL2 memory ceiling to 10GB RAM and 4GB Swap (`%UserProfile%\.wslconfig`).
@@ -147,3 +152,51 @@ Phase 4 produces the production-ready enriched analytics layer and date dimensio
    - Comprehensive 16-point automated validation suite: **16 / 16 Checks PASSED**.
    - Feature taxonomy catalog in `config/feature_roles.yaml` strictly classifying all 69 columns and documenting target leakage risks.
 
+
+
+### Phase 5: Delay Analytics Aggregations & Insights
+
+Phase 5 builds the aggregation and analytical reporting layer on top of `flights_enriched`:
+1. **Analytics Architecture (`src/processing/build_analytics.py`)**:
+   - Reads only necessary columns from `flights_enriched` projection and caches the dataset once (5,819,079 rows).
+   - Generates 19 KPI and breakdown tables stored to `hdfs:///user/saniya/flight_delay/processed/analytics/<table>/` in Snappy Parquet format with `replication 1` and `coalesce(1)` per table.
+   - Volume thresholds configured in `config/config.yaml`: `min_flown_airport: 1000`, `min_flown_route: 500`.
+   - Consistent additive metrics stored across tables: `total_flights`, `flown_flights`, `cancelled_flights`, `diverted_flights`, `delayed_arr_15`, `delayed_dep_15`, `sum_arr_delay_min`, `sum_dep_delay_min`, `sum_delay_minutes_pos`, `sum_cause_air_system`, `sum_cause_security`, `sum_cause_airline`, `sum_cause_late_aircraft`, `sum_cause_weather`.
+   - Derived rates: `cancel_rate`, `divert_rate`, `arr_delay_rate_15`, `on_time_rate`, `dep_delay_rate_15`, `avg_arr_delay_min`, `avg_arr_delay_when_delayed`, and cause shares.
+   - Deterministic tie-breaking for rankings (`rank_on_time`): ordered by `arr_delay_rate_15 ASC`, `flown_flights DESC`, and identifier `ASC` for rows meeting volume threshold; null otherwise.
+   - Unmapped handling: flights with unmapped endpoints mapped to literal `'UNMAPPED'` key buckets ensuring exact dimension sum reconciliation.
+
+2. **Analytics Catalog (19 Tables)**:
+   - `kpi_overall`: 1 row executive KPI summary.
+   - `kpi_by_month`: 12 rows (monthly trends).
+   - `kpi_by_day_of_week`: 7 rows (day of week performance).
+   - `kpi_by_dep_hour`: 24 rows (hourly departure curves).
+   - `kpi_by_dow_hour`: 168 rows (heat map matrix).
+   - `kpi_by_airline`: 14 rows (airline carrier performance).
+   - `kpi_by_airline_month`: 168 rows (complete 14 carriers x 12 months matrix).
+   - `kpi_by_origin_airport`: 323 rows (322 airports + 1 UNMAPPED bucket, coordinates, volume ranking).
+   - `kpi_by_dest_airport`: 323 rows (322 airports + 1 UNMAPPED bucket, coordinates, volume ranking).
+   - `kpi_by_route`: 4,696 rows (routes with origin/dest, average distance, volume ranking).
+   - `kpi_by_origin_state`: 55 rows (states, territories, + NA unmapped bucket).
+   - `kpi_by_date`: 365 rows (daily flight counts, holiday windows).
+   - `kpi_by_segment`: 15 rows (long format: DISTANCE_BAND, SEASON, DEP_TIME_BLOCK, IS_HOLIDAY_WINDOW, IS_WEEKEND).
+   - `cancellations_by_reason_month`: 43 rows (reasons A/B/C/D by month).
+   - `cancellations_by_reason_airline`: 46 rows (reasons by airline).
+   - `causes_by_month`: 12 rows (cause minutes by month).
+   - `causes_by_airline`: 14 rows (cause minutes by airline).
+   - `causes_by_origin_airport`: 323 rows (cause minutes by airport).
+   - `delay_category_by_airline`: 14 rows (breakdown across delay severity bins).
+
+3. **Validation Suite (`src/processing/validate_analytics.py`)**:
+   - Automated 7-point validation suite: **7 / 7 Checks PASSED**.
+   - Dimension sum reconciliation: all 12 dimension tables sum to exact flight counts (total 5,819,079, flown 5,714,008, cancelled 89,884, diverted 15,187, delayed_arr_15 1,063,439, delayed_dep_15 1,050,422).
+   - Cause totals consistency: total 62,651,867 min matches across all cause tables and exactly equals `sum(ARRIVAL_DELAY)` on `HAS_CAUSE_DATA=1`.
+   - Airline counts match Phase 2 baseline exactly across all 14 carriers.
+   - UNMAPPED bucket counts: origin 757, dest 755.
+   - Re-aggregation consistency: weighted average from `kpi_by_month` (4.4071 min) equals `kpi_overall` and matches Phase 2 mean ARRIVAL_DELAY 4.41 min.
+   - Independent plain Spark SQL recomputation: `kpi_overall` and individual cells matched 100%.
+   - Quality checks: 0 null dimension keys, 0 negative counts, all rates bounded in `[0.0, 1.0]`.
+
+4. **Insights Report Generation (`src/processing/write_analytics_report.py`)**:
+   - Automatically generates `output/analytics/phase5_insights.md` dynamically from tables and metric logs.
+   - Contains top/bottom 10 airlines, best/worst months & hours, busiest airports, worst routes, cause breakdown, segments, and measured runtimes.

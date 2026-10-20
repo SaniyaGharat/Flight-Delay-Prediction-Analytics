@@ -3,6 +3,7 @@
 import os
 import sys
 import time
+import json
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -13,12 +14,34 @@ from src.utils.spark_session import get_spark_session
 import pyspark.sql.functions as F
 
 def generate_report():
+    report_start = time.perf_counter()
     print("[INFO] Initializing Spark for Phase 4 Report generation...")
     spark = get_spark_session("write_enrichment_report")
     
     df_enriched = spark.read.parquet("hdfs://localhost:9000/user/saniya/flight_delay/processed/flights_enriched")
     df_dim_date = spark.read.parquet("hdfs://localhost:9000/user/saniya/flight_delay/processed/dim_date")
     
+    # Load measured metrics from logs/metrics/
+    metrics_dir = PROJECT_ROOT / "logs" / "metrics"
+    
+    def load_metric(filename):
+        p = metrics_dir / filename
+        if p.exists():
+            with open(p, "r", encoding="utf-8") as f:
+                return json.load(f)
+        return {"runtime_sec": "N/A", "status": "UNKNOWN"}
+    
+    m_dim = load_metric("build_dim_date.json")
+    m_enr = load_metric("build_enriched.json")
+    m_val = load_metric("validate_enriched.json")
+    
+    dim_date_runtime = m_dim.get("runtime_sec", "N/A")
+    dim_date_status = m_dim.get("status", "SUCCESS")
+    enriched_runtime = m_enr.get("runtime_sec", "N/A")
+    enriched_status = m_enr.get("status", "SUCCESS")
+    validate_runtime = m_val.get("runtime_sec", "N/A")
+    validate_status = m_val.get("status", "SUCCESS")
+
     total_rows = df_enriched.count()
     dim_date_rows = df_dim_date.count()
     
@@ -246,24 +269,32 @@ All candidate features were constructed exclusively from pre-departure informati
 
 ---
 
-## 8. Execution Runtimes, Memory Headroom & Crash Audit
+## 8. Measured Execution Runtimes & Pipeline Performance
 
-| Pipeline Script | Execution Scope | Host Resources Allocated | Runtime | Peak Driver RAM | Exit Status |
-|:----------------|:----------------|:-------------------------|:-------:|:---------------:|:-----------:|
-| `build_dim_date.py` | Generates 365 calendar dates & holidays | local[6], 5g driver | 6.4 s | < 1.0 GiB | **Success** |
-| `build_enriched.py` | Full dataset broadcast joins & feature generation | local[6], 5g driver | 61.1 s | ~ 2.4 GiB | **Success** |
-| `validate_enriched.py` | Comprehensive 16-point validation checklist | local[6], 5g driver | 11.2 s | ~ 1.5 GiB | **Success** |
+All runtimes are recorded via `time.perf_counter()` and loaded directly from `logs/metrics/*.json`:
 
-### Memory & Crash Audit
-- **WSL Resource Allocations**: Under the updated `.wslconfig` limits (10GB RAM limit, 4GB swap, 8 vCPUs), the system ran with 9.2 GiB available memory.
-- **Spark Stability**: `spark.master: local[6]`, `spark.driver.memory: 5g`, and `spark.sql.shuffle.partitions: 24` eliminated all memory pressure.
-- **Kernel OOM Check**: `dmesg -T | grep -i -E 'oom|killed process'` confirmed **0 OOM kernel kills** across all Phase 4 runs.
-- **Failures / Retries**: Exactly 0 pipeline crashes or retries occurred during dataset generation.
+| Pipeline Script | Execution Scope | Measured Runtime | Metric Source | Status |
+|:----------------|:----------------|:----------------:|:-------------|:------:|
+| `build_dim_date.py` | Generates 365 calendar dates & holidays | {dim_date_runtime} s | `logs/metrics/build_dim_date.json` | **{dim_date_status}** |
+| `build_enriched.py` | Full dataset broadcast joins & feature generation | {enriched_runtime} s | `logs/metrics/build_enriched.json` | **{enriched_status}** |
+| `validate_enriched.py` | Comprehensive 16-point validation checklist | {validate_runtime} s | `logs/metrics/validate_enriched.json` | **{validate_status}** |
+
+### Resource Allocation & Environment
+- **WSL Resource Limits**: Configured via `.wslconfig` (9.7 GiB RAM limit, 4.0 GiB swap, 8 vCPUs).
+- **Spark Runtime Configuration**: `spark.master: local[6]`, `spark.driver.memory: 5g`, `spark.executor.memory: 5g`, `spark.sql.shuffle.partitions: 24`.
 """
     with open(report_file, "w", encoding="utf-8") as f:
         f.write(report_md)
     
-    print(f"[SUCCESS] Generated {report_file} successfully!")
+    elapsed = time.perf_counter() - report_start
+    write_metric = {
+        "script": "write_enrichment_report.py",
+        "runtime_sec": round(elapsed, 2),
+        "status": "SUCCESS"
+    }
+    with open(metrics_dir / "write_enrichment_report.json", "w", encoding="utf-8") as wf:
+        json.dump(write_metric, wf, indent=2)
+    print(f"[SUCCESS] Generated {report_file} successfully in {elapsed:.2f}s!")
     spark.stop()
 
 if __name__ == "__main__":

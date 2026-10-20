@@ -11,6 +11,7 @@ Writes output to HDFS processed/flights_enriched (Parquet, snappy, partitioned b
 import os
 import sys
 import time
+import json
 import logging
 from datetime import date, timedelta
 from pathlib import Path
@@ -61,7 +62,7 @@ def compute_holiday_window_strings(holiday_strings: List[str], window_days: int 
 
 
 def build_enriched_pipeline() -> Dict[str, Any]:
-    start_time = time.time()
+    start_time = time.perf_counter()
     logger = setup_logger(PROJECT_ROOT)
     logger.info("============================================================")
     logger.info("Starting Phase 4 Flight Enrichment Pipeline (build_enriched)...")
@@ -351,7 +352,18 @@ def build_enriched_pipeline() -> Dict[str, Any]:
         write_elapsed = time.time() - write_start
         logger.info(f"Successfully wrote flights_enriched Parquet in {write_elapsed:.2f}s.")
 
-        total_runtime = time.time() - start_time
+        total_runtime = time.perf_counter() - start_time
+        metrics = {
+            "script": "build_enriched.py",
+            "runtime_sec": round(total_runtime, 2),
+            "output_rows": output_rows,
+            "status": "SUCCESS"
+        }
+        metrics_path = PROJECT_ROOT / "logs" / "metrics" / "build_enriched.json"
+        metrics_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(metrics_path, "w", encoding="utf-8") as mf:
+            json.dump(metrics, mf, indent=2)
+        logger.info(f"Saved runtime metrics ({total_runtime:.2f}s) to {metrics_path}")
         logger.info("============================================================")
         logger.info(f"Phase 4 Enrichment Pipeline completed successfully in {total_runtime:.2f}s!")
         logger.info("============================================================")

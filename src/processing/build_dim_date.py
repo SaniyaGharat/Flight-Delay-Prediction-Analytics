@@ -10,6 +10,8 @@ Writes output to HDFS processed/dim_date (Parquet, snappy).
 
 import os
 import sys
+import json
+import time
 import time
 import logging
 from datetime import date, timedelta
@@ -61,6 +63,7 @@ def compute_holiday_window_dates(holiday_strings: List[str], window_days: int = 
 
 
 def build_dim_date_pipeline():
+    start_time = time.perf_counter()
     logger = setup_logger(PROJECT_ROOT)
     logger.info("============================================================")
     logger.info("Starting Phase 4 Date Dimension Generation (build_dim_date)...")
@@ -162,6 +165,19 @@ def build_dim_date_pipeline():
             .parquet(dim_date_path)
 
         logger.info("[SUCCESS] dim_date successfully written to HDFS.")
+        
+        elapsed = time.perf_counter() - start_time
+        metrics = {
+            "script": "build_dim_date.py",
+            "runtime_sec": round(elapsed, 2),
+            "output_rows": cnt,
+            "status": "SUCCESS"
+        }
+        metrics_path = PROJECT_ROOT / "logs" / "metrics" / "build_dim_date.json"
+        metrics_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(metrics_path, "w", encoding="utf-8") as mf:
+            json.dump(metrics, mf, indent=2)
+        logger.info(f"Saved runtime metrics ({elapsed:.2f}s) to {metrics_path}")
 
     finally:
         spark.stop()

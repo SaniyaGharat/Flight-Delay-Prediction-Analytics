@@ -3,6 +3,8 @@
 import os
 import sys
 import time
+import json
+from pathlib import Path
 from pyspark.sql import functions as F
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -28,7 +30,7 @@ PHASE2_MONTH_COUNTS = {
 }
 
 def validate_enriched():
-    start_time = time.time()
+    start_time = time.perf_counter()
     spark = get_spark_session("validate_enriched")
     
     print("=" * 80)
@@ -187,8 +189,19 @@ def validate_enriched():
     print("5 OCTOBER SAMPLE ROWS (Showing mapped vs unmapped IDs)")
     print("=" * 80)
     df_enriched.filter(F.col("MONTH") == 10).select(sample_cols + ["ORIGIN_UNMAPPED", "DEST_UNMAPPED"]).show(5, truncate=False)
-    
-    elapsed = time.time() - start_time
+
+    elapsed = time.perf_counter() - start_time
+    metrics = {
+        "script": "validate_enriched.py",
+        "runtime_sec": round(elapsed, 2),
+        "all_passed": all_passed,
+        "status": "SUCCESS" if all_passed else "FAILED"
+    }
+    metrics_path = Path(PROJECT_ROOT) / "logs" / "metrics" / "validate_enriched.json"
+    metrics_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(metrics_path, "w", encoding="utf-8") as mf:
+        json.dump(metrics, mf, indent=2)
+    print(f"[INFO] Saved metrics to {metrics_path}")
     print(f"\n[INFO] Validation completed in {elapsed:.2f} seconds.")
     print(f"OVERALL STATUS: {'ALL CHECKS PASSED' if all_passed else 'SOME CHECKS FAILED'}")
     spark.stop()
