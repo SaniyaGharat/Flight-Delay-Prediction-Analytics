@@ -5,35 +5,31 @@ app:
   environment: "development"
 
 spark:
-  master: "local[*]"
-  driver_memory: "4g"
-  executor_memory: "4g"
-  shuffle_partitions: 8
+  master: "local[6]"
+  driver_memory: "5g"
+  executor_memory: "5g"
+  shuffle_partitions: 24
   default_fs: "hdfs://localhost:9000"
 
 hdfs:
   namenode_uri: "hdfs://localhost:9000"
-  replication: 1
-  base_dir: "/user/saniya/flight_delay"
-  paths:
-    base: "/user/saniya/flight_delay"
-    raw: "/user/saniya/flight_delay/raw"
-    processed: "/user/saniya/flight_delay/processed"
-    export: "/user/saniya/flight_delay/export"
-    smoke_test: "/user/saniya/flight_delay/tmp_smoke_test"
-    flights_subfolder: "/user/saniya/flight_delay/raw/flights"
-    airports_subfolder: "/user/saniya/flight_delay/raw/airports"
-    airlines_subfolder: "/user/saniya/flight_delay/raw/airlines"
-    flights: "/user/saniya/flight_delay/raw/flights/flights.csv"
-    airports: "/user/saniya/flight_delay/raw/airports/airports.csv"
-    airlines: "/user/saniya/flight_delay/raw/airlines/airlines.csv"
+  base_dir: "/user/${USER}/flight_delay"
+  raw_dir: "/user/${USER}/flight_delay/raw"
+  processed_dir: "/user/${USER}/flight_delay/processed"
+  export_dir: "/user/${USER}/flight_delay/export"
+  smoke_test_dir: "/user/${USER}/flight_delay/tmp_smoke_test"
 
-raw_data:
-  local_dir: "data/raw"
-  files:
-    flights: "flights.csv"
-    airports: "airports.csv"
-    airlines: "airlines.csv"
+holidays_2015:
+  - "2015-01-01"
+  - "2015-01-19"
+  - "2015-02-16"
+  - "2015-05-25"
+  - "2015-07-03"  # Independence Day (observed)
+  - "2015-09-07"
+  - "2015-10-12"
+  - "2015-11-11"
+  - "2015-11-26"
+  - "2015-12-25"
 
 local_paths:
   raw_data: "data/raw"

@@ -12,7 +12,8 @@ flight-delay-analytics/
 │   ├── settings.json
 │   └── launch.json
 ├── config/
-│   ├── config.yaml           # Centralized configuration (HDFS URIs, Spark tuning, local paths)
+│   ├── config.yaml           # Centralized configuration (HDFS URIs, Spark tuning, local paths, holidays)
+│   ├── feature_roles.yaml    # Column roles, ML features, labels, and target leakage taxonomy
 │   └── hadoop/               # Hadoop core-site.xml and hdfs-site.xml configurations
 ├── data/
 │   └── raw/                  # Local copies of input flight datasets (gitignored)
@@ -21,16 +22,21 @@ flight-delay-analytics/
 ├── output/
 │   ├── profiling/            # Phase 2 raw data profiling markdown report
 │   ├── cleaning/             # Phase 3 cleaning report & airport_id_map CSV
+│   ├── enrichment/           # Phase 4 enrichment report (phase4_report.md)
 │   └── powerbi/              # Aggregated analytical datasets exported for Power BI (gitignored)
-├── scripts/                  # Shell utility scripts (start_hdfs.sh, stop_hdfs.sh, verify_*.sh)
+├── scripts/                  # Shell utility scripts (start_hdfs.sh, stop_hdfs.sh, verification scripts)
+│   └── phase3/               # Archived Phase 3 verification and execution scripts
 ├── src/
 │   ├── __init__.py
 │   ├── ingestion/            # Raw data ingestion into HDFS (ingest_to_hdfs.py)
 │   ├── profiling/            # Raw data profiling pipeline (profile_raw.py)
-│   ├── processing/           # Airport ID mapping, data cleaning, and validation
+│   ├── processing/           # Cleaning, mapping, enrichment, and validation
 │   │   ├── build_airport_map.py
 │   │   ├── clean_flights.py
-│   │   └── validate_clean.py
+│   │   ├── validate_clean.py
+│   │   ├── build_dim_date.py
+│   │   ├── build_enriched.py
+│   │   └── validate_enriched.py
 │   ├── analytics/            # SQL-based analytics and delay metrics aggregation
 │   ├── ml/                   # Delay prediction feature engineering and MLlib models
 │   ├── export/               # CSV/Parquet export pipeline for Power BI consumption
@@ -105,3 +111,39 @@ Phase 3 establishes an enterprise-grade cleaned data layer in HDFS `processed/`:
 3. **Validation Suite (`src/processing/validate_clean.py`)**:
    - Automated test suite asserting all 8 integrity checks (row counts, monthly counts, null counts, flag counts, IATA referential integrity, and time normalization).
    - Result: **8 / 8 Checks PASSED**.
+
+### Phase 4: Feature Engineering, Dimension Modeling & Enrichment
+Phase 4 produces the production-ready enriched analytics layer and date dimension:
+1. **Host Hardware Tuning (`.wslconfig`)**:
+   - Upgraded WSL2 memory ceiling to 10GB RAM and 4GB Swap (`%UserProfile%\.wslconfig`).
+   - Spark engine tuned in `config/config.yaml`: `master: local[6]`, `driver_memory: 5g`, `executor_memory: 5g`, `shuffle_partitions: 24`.
+   - Confirmed 0 OOM events (`dmesg`) across entire multi-million row pipeline.
+
+2. **Dimension Date Generation (`src/processing/build_dim_date.py`)**:
+   - Generates 365 rows covering every calendar day of 2015.
+   - Computes calendar attributes (`YEAR`, `MONTH`, `MONTH_NAME`, `DAY`, `DAY_OF_WEEK`, `DAY_OF_WEEK_NAME`, `WEEK_OF_YEAR`, `IS_WEEKEND`, `SEASON`).
+   - Flags 67 dates falling within +/- 3 day windows of 10 official US federal holidays (`IS_HOLIDAY_WINDOW`).
+   - Saved to HDFS at `processed/dim_date` (5.7 KB).
+
+3. **Enrichment & Feature Engineering (`src/processing/build_enriched.py`)**:
+   - Broadcast left joins against `airlines_clean` (14 carriers) and `airports_clean` (origin & destination names, cities, states, coordinates).
+   - Asserted exact 1:1 row conservation (5,819,079 rows; 0 join fan-out).
+   - Derived pre-departure features:
+     - `ROUTE`: origin-destination IATA string (e.g. `JFK-LAX`).
+     - `SCHED_DEP_HOUR`, `SCHED_ARR_HOUR`: extracted 0-23 integer hours from 4-digit scheduled strings.
+     - `SCHED_DEP_TS`: local airport scheduled departure timestamp (no timezone data exists for cross-zone duration math).
+     - `DEP_TIME_BLOCK`: `Night`, `Morning`, `Afternoon`, `Evening`.
+     - `DISTANCE_BAND`: `Short` (<500 mi), `Medium` (500-1500 mi), `Long` (>1500 mi).
+     - Calendar & holiday features (`DAY_OF_WEEK_NAME`, `IS_WEEKEND`, `MONTH_NAME`, `SEASON`, `IS_HOLIDAY_WINDOW`).
+   - Defined supervised classification targets (null for non-flown flights):
+     - `IS_ARR_DELAYED_15`: binary label (1,063,439 delayed flights).
+     - `IS_DEP_DELAYED_15`: binary label (1,050,422 delayed flights).
+     - `DELAY_CATEGORY`: multi-class label (`On Time/Early`, `Minor`, `Moderate`, `Major`, `Severe`).
+     - `PRIMARY_DELAY_CAUSE`: dominant delay attribution category (`Late Aircraft`, `Airline`, `Air System`, `Weather`, `Multiple`, `Security`).
+     - `STATUS`: operational status (`Completed`: 5,714,008, `Cancelled`: 89,884, `Diverted`: 15,187).
+   - Saved to HDFS at `processed/flights_enriched` partitioned by `MONTH` (249.3 MB Snappy Parquet, 1 file per month).
+
+4. **Enriched Validation & Feature Roles (`src/processing/validate_enriched.py`, `config/feature_roles.yaml`)**:
+   - Comprehensive 16-point automated validation suite: **16 / 16 Checks PASSED**.
+   - Feature taxonomy catalog in `config/feature_roles.yaml` strictly classifying all 69 columns and documenting target leakage risks.
+
