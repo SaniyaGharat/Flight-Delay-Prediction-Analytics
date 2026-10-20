@@ -7,7 +7,7 @@ env/
 .tools/
 __pycache__/
 *.py[cod]
-*$py.class
+*.class
 *.pyd
 
 # Spark & Hadoop
@@ -17,14 +17,11 @@ spark-warehouse/
 *.sparkStaging/
 *.crc
 
-# Project data & outputs
-data/raw/*
+# Project data, logs, and outputs
+data/raw/*.csv
 !data/raw/.gitkeep
-output/powerbi/*
-!output/powerbi/.gitkeep
-logs/*
-!logs/.gitkeep
-*.log
+logs/
+output/
 
 # Jupyter Notebook checkpoints
 .ipynb_checkpoints/

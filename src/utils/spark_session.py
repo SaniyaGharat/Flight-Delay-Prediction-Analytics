@@ -51,6 +51,11 @@ def configure_environment() -> None:
         if default_hadoop.exists():
             os.environ["HADOOP_HOME"] = str(default_hadoop)
 
+    # Set HADOOP_CONF_DIR to align Spark with native Hadoop site configurations
+    if "HADOOP_HOME" in os.environ:
+        hadoop_conf = str(Path(os.environ["HADOOP_HOME"]) / "etc" / "hadoop")
+        os.environ.setdefault("HADOOP_CONF_DIR", hadoop_conf)
+
     # Ensure Hadoop bin & sbin are on PATH
     if "HADOOP_HOME" in os.environ:
         hadoop_bin = str(Path(os.environ["HADOOP_HOME"]) / "bin")
@@ -185,6 +190,8 @@ def get_spark_session(
 
         print(f"[INFO] HDFS NameNode reachable at {host}:{port}. Setting fs.defaultFS = {hdfs_uri}")
         builder = builder.config("spark.hadoop.fs.defaultFS", hdfs_uri)
+        # Enforce replication factor 1 for local single-node HDFS cluster
+        builder = builder.config("spark.hadoop.dfs.replication", "1")
 
     # Apply any custom extra configurations
     if extra_configs:
