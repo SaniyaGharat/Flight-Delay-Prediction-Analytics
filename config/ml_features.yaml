@@ -1,0 +1,35 @@
+version: "1.0"
+description: "Pre-departure features for Phase 6 flight delay prediction"
+label: "IS_ARR_DELAYED_15"
+splits:
+  train:
+    months: [1, 2, 3, 4, 5, 6, 7, 8, 9]
+    description: "January to September (chronological train)"
+  validation:
+    months: [10]
+    description: "October (chronological validation and threshold tuning)"
+  test:
+    months: [11, 12]
+    description: "November to December (chronological test)"
+features:
+  categorical:
+    - AIRLINE
+    - ORIGIN_AIRPORT
+    - DESTINATION_AIRPORT
+    - DEP_TIME_BLOCK
+    - DISTANCE_BAND
+    - DAY_OF_WEEK
+  numeric:
+    - DISTANCE
+    - SCHEDULED_TIME
+    - SCHED_DEP_HOUR
+    - SCHED_ARR_HOUR
+    - IS_WEEKEND
+    - IS_HOLIDAY_WINDOW
+imputation:
+  SCHEDULED_TIME: "train_median"
+  ORIGIN_AIRPORT: "UNMAPPED"
+  DESTINATION_AIRPORT: "UNMAPPED"
+ablation_optional:
+  - SEASON
+  - TOP_200_ROUTES

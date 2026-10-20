@@ -200,3 +200,49 @@ Phase 5 builds the aggregation and analytical reporting layer on top of `flights
 4. **Insights Report Generation (`src/processing/write_analytics_report.py`)**:
    - Automatically generates `output/analytics/phase5_insights.md` dynamically from tables and metric logs.
    - Contains top/bottom 10 airlines, best/worst months & hours, busiest airports, worst routes, cause breakdown, segments, and measured runtimes.
+
+---
+
+## Phase 6: Machine Learning Delay Prediction
+
+### 1. Objective and Problem Formulation
+The goal of Phase 6 is to build and evaluate predictive models for flight arrival delays using Apache Spark MLlib, adhering strictly to pre-departure information.
+- **Target Label**: IS_ARR_DELAYED_15 (binary indicator: 1 if ARRIVAL_DELAY >= 15, 0 otherwise).
+- **Target Population**: Flown flights (IS_FLOWN = 1, 5,714,008 total flights across 2015). Cancelled flights (~1.5%) never arrive, so arrival delay is undefined and excluded.
+- **Evaluation Discipline**: Strict chronological train / validation / test split to evaluate operational forecasting and temporal generalization.
+
+### 2. Chronological Data Split & Base Rate Shift
+Data was split chronologically by month, persisted to HDFS at processed/ml/dataset/{train,val,test}:
+- **Train (Months 1–9: Jan–Sep)**: 4,299,046 rows | 836,017 delayed | Base Rate: 19.45%
+- **Validation (Month 10: Oct)**: 482,878 rows | 60,079 delayed | Base Rate: 12.44%
+- **Test (Months 11–12: Nov–Dec)**: 932,084 rows | 167,343 delayed | Base Rate: 17.95%
+- **Total**: 5,714,008 rows | 1,063,439 delayed | Base Rate: 18.61%
+- **Verification**: Flown flight counts per month match kpi_by_month.flown_flights exactly across all 12 months.
+- **Base Rate Shift**: Validation delay rate drops to 12.44% due to optimal autumn weather, whereas winter test months experience holiday traffic and seasonal weather surges (Nov: 15.26%, Dec: 20.60%).
+
+### 3. Pre-Departure Features & Guardrail Compliance
+- **Categorical Features (6)**: AIRLINE, ORIGIN_AIRPORT, DESTINATION_AIRPORT (nulls mapped to 'UNMAPPED'), DEP_TIME_BLOCK, DISTANCE_BAND, DAY_OF_WEEK (string).
+- **Numeric Features (6)**: DISTANCE, SCHEDULED_TIME (6 nulls imputed with TRAIN median = 123.0 min), SCHED_DEP_HOUR, SCHED_ARR_HOUR, IS_WEEKEND, IS_HOLIDAY_WINDOW.
+- **Feature Guard (src/ml/guard.py)**: An automated guard function enforces config/feature_roles.yaml, raising ValueError if any feature with model_use of excluded-leakage, excluded-time-split, label, or identifier is included. Unit tests in scripts/verify/phase6/b2_test_guard.py prove it blocks HAS_CAUSE_DATA, DEPARTURE_DELAY, and MONTH.
+
+### 4. Benchmark Models & Performance
+Models were tuned on Validation only, threshold-calibrated on Validation, and evaluated on Test:
+| Model / Baseline | Test AUC-ROC | Test AUC-PR | Test Precision | Test Recall | Test F1 | Test Accuracy |
+|---|---|---|---|---|---|---|
+| **Majority Baseline** | 0.5000 | 0.1795 | 0.0000 | 0.0000 | 0.0000 | 82.05% |
+| **Historical Rate Baseline** | 0.6075 | 0.2402 | 0.2334 | 0.5794 | 0.3326 | 72.82% |
+| **Logistic Regression (Balanced)** | **0.6069** | **0.2387** | 0.2303 | 0.5994 | **0.3328** | 56.85% |
+| **GBT Classifier (Sampled)** | **0.5881** | **0.2218** | 0.2195 | 0.6095 | **0.3228** | 53.64% |
+
+- **Leakage Audit**: Both model AUC-ROCs are below the 0.85 leakage threshold, confirming clean pre-departure signal without leakage of actual departure/airborne metrics.
+- **Seasonal Breakdown (Test)**:
+  - November (Base rate 15.26%): LR AUC-ROC 0.6015, GBT AUC-ROC 0.5861.
+  - December (Base rate 20.60%): LR AUC-ROC 0.6105, GBT AUC-ROC 0.5898.
+- **Top GBT Feature Importances**: DESTINATION_AIRPORT (0.4062), ORIGIN_AIRPORT (0.3850), AIRLINE (0.0505), DAY_OF_WEEK (0.0480), SCHED_ARR_HOUR (0.0437).
+- **Top LR Delay Drivers**: AIRLINE=NK (+0.0842), DEST=BWI (+0.0613), ORIGIN=DFW (+0.0581); Top Protective: AIRLINE=DL (-0.1087), AIRLINE=AS (-0.0702).
+
+### 5. Artifacts and Persistence
+- **HDFS Models**: processed/ml/models/logistic_regression and processed/ml/models/gbt.
+- **HDFS Test Predictions**: processed/ml/predictions_test (Parquet, 932,084 rows with labels, probabilities, predictions).
+- **Metrics**: Written to logs/metrics/ml_*.json and HDFS Parquet processed/ml/metrics.
+- **Comprehensive Report**: Dynamically compiled into output/ml/phase6_report.md via src/ml/write_ml_report.py.
