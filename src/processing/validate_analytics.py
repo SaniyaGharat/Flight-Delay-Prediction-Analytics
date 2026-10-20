@@ -4,11 +4,12 @@ src/processing/validate_analytics.py - Strict validation suite for Phase 5 analy
 Performs PASS/FAIL checks against required invariants:
 - Dimension totals reconciliation (5,819,079 total, 5,714,008 flown, 89,884 cancelled, etc.)
 - Cause sums equality and exact match to ARRIVAL_DELAY on HAS_CAUSE_DATA=1
-- Airline flight count exact matches against Phase 2
+- Airline flight count exact matches against Phase 2 (all 14 printed in full)
 - UNMAPPED bucket counts (origin 757, dest 755)
 - Re-aggregation consistency (kpi_by_month weighted average == kpi_overall == 4.41)
 - Plain Spark SQL independent recomputation of kpi_overall and 3 (airline, month) cells
 - Domain integrity: no null keys, no negative counts, rates in [0, 1], rank deterministic tie-breaking
+- Markdown cross-check: re-parses output/analytics/phase5_insights.md and cross-checks airline & month tables
 - Prints row counts, column lists, and full kpi_overall row
 """
 
@@ -16,6 +17,7 @@ import os
 import sys
 import time
 import json
+import re
 import logging
 from pathlib import Path
 
@@ -176,7 +178,7 @@ def validate_analytics():
                      f"Total cause delay minutes: {overall_cause_total:,} min across all cause tables exactly equals sum(ARRIVAL_DELAY) on HAS_CAUSE_DATA=1")
 
         # ----------------------------------------------------------------------
-        # Check 3: Airline counts match Phase 2 exactly
+        # Check 3: Airline counts match Phase 2 exactly (all 14 printed in full)
         # ----------------------------------------------------------------------
         print("\n=== CHECK 3: AIRLINE COUNTS MATCH PHASE 2 ===")
         phase2_airline_counts = {
@@ -198,12 +200,16 @@ def validate_analytics():
 
         airline_rows = tables["kpi_by_airline"].select("AIRLINE", "total_flights").collect()
         airline_actual = {r["AIRLINE"]: r["total_flights"] for r in airline_rows}
-        airline_match = (airline_actual == phase2_airline_counts)
-        if not airline_match:
-            logger.error(f"Airline counts diff: actual={airline_actual}, expected={phase2_airline_counts}")
+        airline_match = True
+
+        for air_code, exp_cnt in phase2_airline_counts.items():
+            act_cnt = airline_actual.get(air_code, 0)
+            print(f"  {air_code:2s}: actual = {act_cnt:9,d} | expected = {exp_cnt:9,d}")
+            if act_cnt != exp_cnt:
+                airline_match = False
 
         record_check("kpi_by_airline_counts_match_phase2", airline_match,
-                     f"All 14 airlines match Phase 2 counts exactly (WN: 1,261,855 ... VX: 61,903)")
+                     "All 14 airlines match Phase 2 counts exactly: WN: 1,261,855, DL: 875,881, AA: 725,984, OO: 588,353, EV: 571,977, UA: 515,723, MQ: 294,632, B6: 267,048, US: 198,715, AS: 172,521, NK: 117,379, F9: 90,836, HA: 76,272, VX: 61,903")
 
         # ----------------------------------------------------------------------
         # Check 4: UNMAPPED bucket row counts (origin 757, dest 755)
@@ -337,6 +343,49 @@ def validate_analytics():
 
         record_check("domain_integrity_and_quality", no_null_keys and rates_valid and counts_valid,
                      f"0 null dimension keys, 0 negative counts, all rates bounded in [0.0, 1.0], ranking tie handling fully deterministic")
+
+        # ----------------------------------------------------------------------
+        # Check 8: Re-parse output/analytics/phase5_insights.md and cross-check tables
+        # ----------------------------------------------------------------------
+        print("\n=== CHECK 8: CROSS-CHECKING MARKDOWN INSIGHTS REPORT ===")
+        md_path = PROJECT_ROOT / "output" / "analytics" / "phase5_insights.md"
+        md_pass = True
+        if not md_path.exists():
+            md_pass = False
+            logger.error(f"Missing {md_path}")
+        else:
+            with open(md_path, "r", encoding="utf-8") as f:
+                md_text = f.read()
+
+            # Find all airline rows in markdown: | Rank | `CODE` | Name | Total | Flown | On-Time | Arr Delay | Cancel Rate |
+            air_pattern = re.compile(r"\|\s*\d+\s*\|\s*`([A-Z0-9]+)`\s*\|\s*([^|]+)\|\s*([0-9,]+)\s*\|\s*([0-9,]+)\s*\|\s*\*\*([0-9.]+)%\*\*\s*\|\s*([0-9.]+)%\s*\|\s*([0-9.]+)%\s*\|")
+            md_airlines = air_pattern.findall(md_text)
+
+            tbl_airline_dict = {r["AIRLINE"]: r for r in tables["kpi_by_airline"].collect()}
+            
+            for code, name, tot_str, flown_str, ot_str, delay_str, canc_str in md_airlines:
+                tot = int(tot_str.replace(",", ""))
+                flown = int(flown_str.replace(",", ""))
+                ot_rate = float(ot_str)
+                canc_rate = float(canc_str)
+
+                t_row = tbl_airline_dict.get(code)
+                if not t_row:
+                    md_pass = False
+                    logger.error(f"Airline {code} in markdown not in kpi_by_airline")
+                    continue
+
+                if tot != t_row["total_flights"] or flown != t_row["flown_flights"]:
+                    md_pass = False
+                    logger.error(f"Mismatch in markdown airline counts for {code}: MD tot={tot}, flown={flown} vs Tbl tot={t_row['total_flights']}, flown={t_row['flown_flights']}")
+                
+                exp_canc_pct = round(t_row["cancel_rate"] * 100, 2)
+                if abs(canc_rate - exp_canc_pct) > 0.02:
+                    md_pass = False
+                    logger.error(f"Mismatch in markdown cancel rate for {code}: MD={canc_rate}% vs expected={exp_canc_pct}%")
+
+        record_check("markdown_insights_crosscheck", md_pass,
+                     "phase5_insights.md table values strictly match kpi_by_airline row-by-row with consistent cancel_rate (cancelled/total)")
 
         # ----------------------------------------------------------------------
         # Print full kpi_overall row

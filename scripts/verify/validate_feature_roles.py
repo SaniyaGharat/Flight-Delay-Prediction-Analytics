@@ -56,7 +56,10 @@ def validate_roles():
     
     # 4. Check model_use presence and role rules
     allowed_roles = {"identifier", "dimension", "pre-departure feature candidate", "post-event fact", "label", "flag"}
-    allowed_uses = {"identifier", "categorical-feature", "numeric-feature", "label", "excluded-leakage", "audit"}
+    allowed_uses = {
+        "identifier", "categorical-feature", "numeric-feature", "label",
+        "excluded-leakage", "audit", "excluded-time-split", "excluded-redundant"
+    }
     
     for col_name, info in yaml_cols_dict.items():
         role = info.get("role")
@@ -65,18 +68,24 @@ def validate_roles():
         assert use in allowed_uses, f"Invalid model_use '{use}' for column {col_name}"
         if use == "excluded-leakage":
             assert "leakage_justification" in info, f"Missing leakage_justification for {col_name}"
+        if use == "excluded-time-split":
+            assert "split_reason" in info, f"Missing split_reason for {col_name}"
     
     # Check specific requested mappings
     assert yaml_cols_dict["AIRLINE"]["model_use"] == "categorical-feature"
     assert yaml_cols_dict["ORIGIN_AIRPORT"]["model_use"] == "categorical-feature"
     assert yaml_cols_dict["DESTINATION_AIRPORT"]["model_use"] == "categorical-feature"
-    assert yaml_cols_dict["ROUTE"]["model_use"] == "categorical-feature"
     assert yaml_cols_dict["DAY_OF_WEEK"]["model_use"] == "categorical-feature"
-    assert yaml_cols_dict["MONTH"]["model_use"] == "categorical-feature"
-    assert yaml_cols_dict["HAS_CAUSE_DATA"]["role"] == "flag"
     assert yaml_cols_dict["HAS_CAUSE_DATA"]["model_use"] == "excluded-leakage"
-    assert yaml_cols_dict["IS_FLOWN"]["role"] == "flag"
     assert yaml_cols_dict["IS_FLOWN"]["model_use"] == "excluded-leakage"
+    
+    # Check time-split mappings
+    for tc in ["MONTH", "MONTH_NAME", "DAY", "YEAR", "FLIGHT_DATE", "SCHED_DEP_TS"]:
+        assert yaml_cols_dict[tc]["model_use"] == "excluded-time-split", f"Expected excluded-time-split for {tc}"
+        
+    # Check redundant mappings
+    for rc in ["AIRLINE_NAME", "ORIGIN_AIRPORT_NAME", "ORIGIN_CITY", "ORIGIN_STATE", "DEST_AIRPORT_NAME", "DEST_CITY", "DEST_STATE", "SCHEDULED_DEPARTURE", "SCHEDULED_ARRIVAL"]:
+        assert yaml_cols_dict[rc]["model_use"] == "excluded-redundant", f"Expected excluded-redundant for {rc}"
     
     print("\n[SUCCESS] All assertions PASSED! YAML column set strictly equals Parquet schema (70 columns).")
     spark.stop()

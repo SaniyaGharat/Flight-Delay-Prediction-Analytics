@@ -1,323 +1,340 @@
-# ==============================================================================
-# Feature Roles and Target Leakage Taxonomy for Flight Delay Prediction (Phase 4/5)
-# ==============================================================================
-# Field Definitions:
-#   role: identifier | dimension | pre-departure feature candidate | post-event fact | label | flag
-#   model_use: identifier | categorical-feature | numeric-feature | label | excluded-leakage | audit
-#
-# Timezone Caveat:
-#   SCHED_DEP_TS represents the scheduled local wall-clock departure time constructed
-#   from FLIGHT_DATE + SCHEDULED_DEPARTURE. Because raw BTS data contains no timezone
-#   offsets or airport UTC offsets, SCHED_DEP_TS is stored without time zone conversion,
-#   while Spark runs under session timezone UTC. Cross-airport duration math or cross-timezone
-#   comparisons using this column directly are not valid.
-# ==============================================================================
-
-version: "2.0"
-dataset: "processed/flights_enriched"
+version: '2.0'
+dataset: processed/flights_enriched
 total_columns: 70
-
 columns:
-  # --------------------------------------------------------------------------
-  # 1. IDENTIFIERS & METADATA
-  # --------------------------------------------------------------------------
   FLIGHT_NUMBER:
-    role: "identifier"
-    model_use: "identifier"
-    description: "Carrier flight designation number. Non-unique across dates/carriers."
+    role: identifier
+    model_use: identifier
+    description: Carrier flight designation number. Non-unique across dates/carriers.
   TAIL_NUMBER:
-    role: "identifier"
-    model_use: "identifier"
-    description: "Aircraft FAA registration number. Entity tracking across flights."
-
-  # --------------------------------------------------------------------------
-  # 2. CATEGORICAL FEATURES (Requested explicit assignments)
-  # --------------------------------------------------------------------------
+    role: identifier
+    model_use: identifier
+    description: Aircraft FAA registration number. Entity tracking across flights.
   AIRLINE:
-    role: "dimension"
-    model_use: "categorical-feature"
-    description: "Two-letter IATA carrier code (14 unique airlines)."
+    role: dimension
+    model_use: categorical-feature
+    description: Two-letter IATA carrier code (14 unique airlines).
   ORIGIN_AIRPORT:
-    role: "dimension"
-    model_use: "categorical-feature"
-    description: "Three-letter IATA code of origin airport (resolved from October DOT IDs)."
+    role: dimension
+    model_use: categorical-feature
+    description: Three-letter IATA code of origin airport (resolved from October DOT
+      IDs).
   DESTINATION_AIRPORT:
-    role: "dimension"
-    model_use: "categorical-feature"
-    description: "Three-letter IATA code of destination airport."
+    role: dimension
+    model_use: categorical-feature
+    description: Three-letter IATA code of destination airport.
   ROUTE:
-    role: "pre-departure feature candidate"
-    model_use: "categorical-feature"
-    description: "Origin-destination airport pair (e.g., JFK-LAX)."
+    role: pre-departure feature candidate
+    model_use: excluded-redundant
+    description: Origin-destination airport pair (e.g., JFK-LAX).
+    redundancy_reason: Redundant with primary code/bucket feature; kept optional/audit
   DAY_OF_WEEK:
-    role: "dimension"
-    model_use: "categorical-feature"
-    description: "Day of week integer (1=Monday .. 7=Sunday)."
+    role: dimension
+    model_use: categorical-feature
+    description: Day of week integer (1=Monday .. 7=Sunday).
   MONTH:
-    role: "dimension"
-    model_use: "categorical-feature"
-    description: "Calendar month integer (1-12). Dataset partition column."
+    role: dimension
+    model_use: excluded-time-split
+    description: Calendar month integer (1-12). Dataset partition column.
+    split_reason: Chronological split makes them non-generalizing across time splits
   DAY_OF_WEEK_NAME:
-    role: "dimension"
-    model_use: "categorical-feature"
-    description: "Full weekday name string (Monday to Sunday)."
+    role: dimension
+    model_use: excluded-redundant
+    description: Full weekday name string (Monday to Sunday).
+    redundancy_reason: Redundant with primary code/bucket feature; kept optional/audit
   MONTH_NAME:
-    role: "dimension"
-    model_use: "categorical-feature"
-    description: "Full English month name (January to December)."
+    role: dimension
+    model_use: excluded-time-split
+    description: Full English month name (January to December).
+    split_reason: Chronological split makes them non-generalizing across time splits
   SEASON:
-    role: "pre-departure feature candidate"
-    model_use: "categorical-feature"
-    description: "Meteorological season (Winter, Spring, Summer, Fall)."
+    role: pre-departure feature candidate
+    model_use: categorical-feature
+    description: Meteorological season (Winter, Spring, Summer, Fall).
   DEP_TIME_BLOCK:
-    role: "pre-departure feature candidate"
-    model_use: "categorical-feature"
-    description: "Departure block: Night (0-5), Morning (6-11), Afternoon (12-17), Evening (18-23)."
+    role: pre-departure feature candidate
+    model_use: categorical-feature
+    description: 'Departure block: Night (0-5), Morning (6-11), Afternoon (12-17),
+      Evening (18-23).'
   DISTANCE_BAND:
-    role: "pre-departure feature candidate"
-    model_use: "categorical-feature"
-    description: "Distance bucket: Short (<500 mi), Medium (500-1500 mi), Long (>1500 mi)."
+    role: pre-departure feature candidate
+    model_use: categorical-feature
+    description: 'Distance bucket: Short (<500 mi), Medium (500-1500 mi), Long (>1500
+      mi).'
   AIRLINE_NAME:
-    role: "dimension"
-    model_use: "categorical-feature"
-    description: "Full commercial carrier name."
+    role: dimension
+    model_use: excluded-redundant
+    description: Full commercial carrier name.
+    redundancy_reason: Redundant with primary code/bucket feature; kept optional/audit
   ORIGIN_AIRPORT_NAME:
-    role: "dimension"
-    model_use: "categorical-feature"
-    description: "Official name of origin airport."
+    role: dimension
+    model_use: excluded-redundant
+    description: Official name of origin airport.
+    redundancy_reason: Redundant with primary code/bucket feature; kept optional/audit
   ORIGIN_CITY:
-    role: "dimension"
-    model_use: "categorical-feature"
-    description: "Municipality of origin airport."
+    role: dimension
+    model_use: excluded-redundant
+    description: Municipality of origin airport.
+    redundancy_reason: Redundant with primary code/bucket feature; kept optional/audit
   ORIGIN_STATE:
-    role: "dimension"
-    model_use: "categorical-feature"
-    description: "Two-letter US state or territory code for origin airport."
+    role: dimension
+    model_use: excluded-redundant
+    description: Two-letter US state or territory code for origin airport.
+    redundancy_reason: Redundant with primary code/bucket feature; kept optional/audit
   DEST_AIRPORT_NAME:
-    role: "dimension"
-    model_use: "categorical-feature"
-    description: "Official name of destination airport."
+    role: dimension
+    model_use: excluded-redundant
+    description: Official name of destination airport.
+    redundancy_reason: Redundant with primary code/bucket feature; kept optional/audit
   DEST_CITY:
-    role: "dimension"
-    model_use: "categorical-feature"
-    description: "Municipality of destination airport."
+    role: dimension
+    model_use: excluded-redundant
+    description: Municipality of destination airport.
+    redundancy_reason: Redundant with primary code/bucket feature; kept optional/audit
   DEST_STATE:
-    role: "dimension"
-    model_use: "categorical-feature"
-    description: "Two-letter US state or territory code for destination airport."
-
-  # --------------------------------------------------------------------------
-  # 3. NUMERIC / TEMPORAL PRE-DEPARTURE FEATURES
-  # --------------------------------------------------------------------------
+    role: dimension
+    model_use: excluded-redundant
+    description: Two-letter US state or territory code for destination airport.
+    redundancy_reason: Redundant with primary code/bucket feature; kept optional/audit
   FLIGHT_DATE:
-    role: "dimension"
-    model_use: "numeric-feature"
-    description: "Calendar date of scheduled flight (YYYY-MM-DD)."
+    role: dimension
+    model_use: excluded-time-split
+    description: Calendar date of scheduled flight (YYYY-MM-DD).
+    split_reason: Chronological split makes them non-generalizing across time splits
   YEAR:
-    role: "dimension"
-    model_use: "numeric-feature"
-    description: "Calendar year (constant 2015)."
+    role: dimension
+    model_use: excluded-time-split
+    description: Calendar year (constant 2015).
+    split_reason: Chronological split makes them non-generalizing across time splits
   DAY:
-    role: "dimension"
-    model_use: "numeric-feature"
-    description: "Day of the month integer (1-31)."
+    role: dimension
+    model_use: excluded-time-split
+    description: Day of the month integer (1-31).
+    split_reason: Chronological split makes them non-generalizing across time splits
   SCHEDULED_DEPARTURE:
-    role: "pre-departure feature candidate"
-    model_use: "categorical-feature"
-    description: "Scheduled gate departure time in local airport clock format (HHMM)."
+    role: pre-departure feature candidate
+    model_use: excluded-redundant
+    description: Scheduled gate departure time in local airport clock format (HHMM).
+    redundancy_reason: Redundant with primary code/bucket feature; kept optional/audit
   SCHED_DEP_HOUR:
-    role: "pre-departure feature candidate"
-    model_use: "numeric-feature"
-    description: "Integer hour of scheduled departure (0-23)."
+    role: pre-departure feature candidate
+    model_use: numeric-feature
+    description: Integer hour of scheduled departure (0-23).
   SCHED_DEP_TS:
-    role: "pre-departure feature candidate"
-    model_use: "numeric-feature"
-    description: "Scheduled departure timestamp in local wall-clock time (Spark session in UTC; see caveat)."
+    role: pre-departure feature candidate
+    model_use: excluded-time-split
+    description: Scheduled departure timestamp in local wall-clock time (Spark session
+      in UTC; see caveat).
+    split_reason: Chronological split makes them non-generalizing across time splits
   SCHEDULED_ARRIVAL:
-    role: "pre-departure feature candidate"
-    model_use: "categorical-feature"
-    description: "Scheduled gate arrival time in local destination clock format (HHMM)."
+    role: pre-departure feature candidate
+    model_use: excluded-redundant
+    description: Scheduled gate arrival time in local destination clock format (HHMM).
+    redundancy_reason: Redundant with primary code/bucket feature; kept optional/audit
   SCHED_ARR_HOUR:
-    role: "pre-departure feature candidate"
-    model_use: "numeric-feature"
-    description: "Integer hour of scheduled arrival (0-23)."
+    role: pre-departure feature candidate
+    model_use: numeric-feature
+    description: Integer hour of scheduled arrival (0-23).
   SCHEDULED_TIME:
-    role: "pre-departure feature candidate"
-    model_use: "numeric-feature"
-    description: "Scheduled gate-to-gate planned duration in minutes."
+    role: pre-departure feature candidate
+    model_use: numeric-feature
+    description: Scheduled gate-to-gate planned duration in minutes.
   DISTANCE:
-    role: "pre-departure feature candidate"
-    model_use: "numeric-feature"
-    description: "Great-circle statute distance between origin and destination in miles."
+    role: pre-departure feature candidate
+    model_use: numeric-feature
+    description: Great-circle statute distance between origin and destination in miles.
   IS_WEEKEND:
-    role: "pre-departure feature candidate"
-    model_use: "numeric-feature"
-    description: "Binary weekend indicator (1 if Saturday or Sunday, else 0)."
+    role: pre-departure feature candidate
+    model_use: numeric-feature
+    description: Binary weekend indicator (1 if Saturday or Sunday, else 0).
   IS_HOLIDAY_WINDOW:
-    role: "pre-departure feature candidate"
-    model_use: "numeric-feature"
-    description: "Binary indicator (1 if FLIGHT_DATE is within +/- 3 days of a US federal holiday, else 0)."
+    role: pre-departure feature candidate
+    model_use: numeric-feature
+    description: Binary indicator (1 if FLIGHT_DATE is within +/- 3 days of a US federal
+      holiday, else 0).
   ORIGIN_LAT:
-    role: "pre-departure feature candidate"
-    model_use: "numeric-feature"
-    description: "Latitude coordinate of origin airport (decimal degrees)."
+    role: pre-departure feature candidate
+    model_use: excluded-redundant
+    description: Latitude coordinate of origin airport (decimal degrees).
+    redundancy_reason: Redundant with primary code/bucket feature; kept optional/audit
   ORIGIN_LON:
-    role: "pre-departure feature candidate"
-    model_use: "numeric-feature"
-    description: "Longitude coordinate of origin airport (decimal degrees)."
+    role: pre-departure feature candidate
+    model_use: excluded-redundant
+    description: Longitude coordinate of origin airport (decimal degrees).
+    redundancy_reason: Redundant with primary code/bucket feature; kept optional/audit
   DEST_LAT:
-    role: "pre-departure feature candidate"
-    model_use: "numeric-feature"
-    description: "Latitude coordinate of destination airport (decimal degrees)."
+    role: pre-departure feature candidate
+    model_use: excluded-redundant
+    description: Latitude coordinate of destination airport (decimal degrees).
+    redundancy_reason: Redundant with primary code/bucket feature; kept optional/audit
   DEST_LON:
-    role: "pre-departure feature candidate"
-    model_use: "numeric-feature"
-    description: "Longitude coordinate of destination airport (decimal degrees)."
-
-  # --------------------------------------------------------------------------
-  # 4. LABELS (TARGET VARIABLES)
-  # --------------------------------------------------------------------------
+    role: pre-departure feature candidate
+    model_use: excluded-redundant
+    description: Longitude coordinate of destination airport (decimal degrees).
+    redundancy_reason: Redundant with primary code/bucket feature; kept optional/audit
   IS_ARR_DELAYED_15:
-    role: "label"
-    model_use: "label"
-    description: "Primary binary classification target (1 if ARRIVAL_DELAY >= 15 min, 0 if < 15, null if not flown)."
+    role: label
+    model_use: label
+    description: Primary binary classification target (1 if ARRIVAL_DELAY >= 15 min,
+      0 if < 15, null if not flown).
   IS_DEP_DELAYED_15:
-    role: "label"
-    model_use: "label"
-    description: "Secondary binary classification target (1 if DEPARTURE_DELAY >= 15 min, 0 if < 15, null if not flown)."
+    role: label
+    model_use: label
+    description: Secondary binary classification target (1 if DEPARTURE_DELAY >= 15
+      min, 0 if < 15, null if not flown).
   DELAY_CATEGORY:
-    role: "label"
-    model_use: "label"
-    description: "Multi-class delay severity label: On Time/Early, Minor, Moderate, Major, Severe, null if not flown."
-
-  # --------------------------------------------------------------------------
-  # 5. POST-EVENT FACTS (EXCLUDED LEAKAGE)
-  # --------------------------------------------------------------------------
+    role: label
+    model_use: label
+    description: 'Multi-class delay severity label: On Time/Early, Minor, Moderate,
+      Major, Severe, null if not flown.'
   DEPARTURE_TIME:
-    role: "post-event fact"
-    model_use: "excluded-leakage"
-    leakage_justification: "Actual gate pushback time. Occurs at physical departure; directly leaks departure delay."
+    role: post-event fact
+    model_use: excluded-leakage
+    leakage_justification: Actual gate pushback time. Occurs at physical departure;
+      directly leaks departure delay.
   DEPARTURE_DELAY:
-    role: "post-event fact"
-    model_use: "excluded-leakage"
-    leakage_justification: "Actual minus scheduled departure minutes. Known only post-pushback; massive target leakage."
+    role: post-event fact
+    model_use: excluded-leakage
+    leakage_justification: Actual minus scheduled departure minutes. Known only post-pushback;
+      massive target leakage.
   TAXI_OUT:
-    role: "post-event fact"
-    model_use: "excluded-leakage"
-    leakage_justification: "Minutes elapsed taxiing from gate to runway. Occurs after gate pushback."
+    role: post-event fact
+    model_use: excluded-leakage
+    leakage_justification: Minutes elapsed taxiing from gate to runway. Occurs after
+      gate pushback.
   WHEELS_OFF:
-    role: "post-event fact"
-    model_use: "excluded-leakage"
-    leakage_justification: "Actual runway takeoff timestamp. Occurs post-pushback."
+    role: post-event fact
+    model_use: excluded-leakage
+    leakage_justification: Actual runway takeoff timestamp. Occurs post-pushback.
   ELAPSED_TIME:
-    role: "post-event fact"
-    model_use: "excluded-leakage"
-    leakage_justification: "Actual gate-to-gate operational duration in minutes. Observed only after arrival."
+    role: post-event fact
+    model_use: excluded-leakage
+    leakage_justification: Actual gate-to-gate operational duration in minutes. Observed
+      only after arrival.
   AIR_TIME:
-    role: "post-event fact"
-    model_use: "excluded-leakage"
-    leakage_justification: "Actual airborne flight duration in minutes. Measured between takeoff and landing."
+    role: post-event fact
+    model_use: excluded-leakage
+    leakage_justification: Actual airborne flight duration in minutes. Measured between
+      takeoff and landing.
   WHEELS_ON:
-    role: "post-event fact"
-    model_use: "excluded-leakage"
-    leakage_justification: "Actual touchdown time on runway. Occurs at end of airborne flight."
+    role: post-event fact
+    model_use: excluded-leakage
+    leakage_justification: Actual touchdown time on runway. Occurs at end of airborne
+      flight.
   TAXI_IN:
-    role: "post-event fact"
-    model_use: "excluded-leakage"
-    leakage_justification: "Minutes elapsed taxiing from runway to gate. Occurs post-touchdown."
+    role: post-event fact
+    model_use: excluded-leakage
+    leakage_justification: Minutes elapsed taxiing from runway to gate. Occurs post-touchdown.
   ARRIVAL_TIME:
-    role: "post-event fact"
-    model_use: "excluded-leakage"
-    leakage_justification: "Actual gate arrival time in local destination clock. Directly leaks arrival delay."
+    role: post-event fact
+    model_use: excluded-leakage
+    leakage_justification: Actual gate arrival time in local destination clock. Directly
+      leaks arrival delay.
   ARRIVAL_DELAY:
-    role: "post-event fact"
-    model_use: "excluded-leakage"
-    leakage_justification: "Actual minus scheduled arrival minutes. Direct post-flight outcome defining targets."
+    role: post-event fact
+    model_use: excluded-leakage
+    leakage_justification: Actual minus scheduled arrival minutes. Direct post-flight
+      outcome defining targets.
   DIVERTED:
-    role: "post-event fact"
-    model_use: "excluded-leakage"
-    leakage_justification: "Flight diversion indicator. Known only when operational diversion is executed."
+    role: post-event fact
+    model_use: excluded-leakage
+    leakage_justification: Flight diversion indicator. Known only when operational
+      diversion is executed.
   CANCELLED:
-    role: "post-event fact"
-    model_use: "excluded-leakage"
-    leakage_justification: "Flight cancellation indicator. Tactical operational decision, not known at schedule time."
+    role: post-event fact
+    model_use: excluded-leakage
+    leakage_justification: Flight cancellation indicator. Tactical operational decision,
+      not known at schedule time.
   CANCELLATION_REASON:
-    role: "post-event fact"
-    model_use: "excluded-leakage"
-    leakage_justification: "Cancellation reason code (A=Carrier, B=Weather, C=NAS, D=Security). Generated only upon cancellation."
+    role: post-event fact
+    model_use: excluded-leakage
+    leakage_justification: Cancellation reason code (A=Carrier, B=Weather, C=NAS,
+      D=Security). Generated only upon cancellation.
   CANCELLATION_REASON_DESC:
-    role: "post-event fact"
-    model_use: "excluded-leakage"
-    leakage_justification: "Full text description of cancellation reason."
+    role: post-event fact
+    model_use: excluded-leakage
+    leakage_justification: Full text description of cancellation reason.
   AIR_SYSTEM_DELAY:
-    role: "post-event fact"
-    model_use: "excluded-leakage"
-    leakage_justification: "FAA Air Traffic Control delay minutes. Populated post-flight only for delays >= 15 min."
+    role: post-event fact
+    model_use: excluded-leakage
+    leakage_justification: FAA Air Traffic Control delay minutes. Populated post-flight
+      only for delays >= 15 min.
   SECURITY_DELAY:
-    role: "post-event fact"
-    model_use: "excluded-leakage"
-    leakage_justification: "TSA security delay minutes. Recorded only post-flight for delays >= 15 min."
+    role: post-event fact
+    model_use: excluded-leakage
+    leakage_justification: TSA security delay minutes. Recorded only post-flight for
+      delays >= 15 min.
   AIRLINE_DELAY:
-    role: "post-event fact"
-    model_use: "excluded-leakage"
-    leakage_justification: "Carrier-controllable delay minutes. Recorded only post-flight for delays >= 15 min."
+    role: post-event fact
+    model_use: excluded-leakage
+    leakage_justification: Carrier-controllable delay minutes. Recorded only post-flight
+      for delays >= 15 min.
   LATE_AIRCRAFT_DELAY:
-    role: "post-event fact"
-    model_use: "excluded-leakage"
-    leakage_justification: "Delay minutes caused by prior leg late inbound aircraft. Recorded only post-flight."
+    role: post-event fact
+    model_use: excluded-leakage
+    leakage_justification: Delay minutes caused by prior leg late inbound aircraft.
+      Recorded only post-flight.
   WEATHER_DELAY:
-    role: "post-event fact"
-    model_use: "excluded-leakage"
-    leakage_justification: "Extreme weather delay minutes. Recorded only post-flight for delays >= 15 min."
+    role: post-event fact
+    model_use: excluded-leakage
+    leakage_justification: Extreme weather delay minutes. Recorded only post-flight
+      for delays >= 15 min.
   PRIMARY_DELAY_CAUSE:
-    role: "post-event fact"
-    model_use: "excluded-leakage"
-    leakage_justification: "Dominant cause of arrival delay derived from cause breakdowns. Exclusively post-flight."
+    role: post-event fact
+    model_use: excluded-leakage
+    leakage_justification: Dominant cause of arrival delay derived from cause breakdowns.
+      Exclusively post-flight.
   STATUS:
-    role: "post-event fact"
-    model_use: "excluded-leakage"
-    leakage_justification: "Operational completion status (Completed, Cancelled, Diverted). Concluded post-flight."
+    role: post-event fact
+    model_use: excluded-leakage
+    leakage_justification: Operational completion status (Completed, Cancelled, Diverted).
+      Concluded post-flight.
   HAS_CAUSE_DATA:
-    role: "flag"
-    model_use: "excluded-leakage"
-    leakage_justification: "HAS_CAUSE_DATA == 1 exactly when ARRIVAL_DELAY >= 15 min for flown flights. Directly leaks the delay label."
+    role: flag
+    model_use: excluded-leakage
+    leakage_justification: HAS_CAUSE_DATA == 1 exactly when ARRIVAL_DELAY >= 15 min
+      for flown flights. Directly leaks the delay label.
   IS_FLOWN:
-    role: "flag"
-    model_use: "excluded-leakage"
-    leakage_justification: "Identifies whether the flight flew or was cancelled/diverted. Known only post-event; leaks flight execution outcome."
-
-  # --------------------------------------------------------------------------
-  # 6. FLAGS & AUDIT (LINEAGE TRACKING)
-  # --------------------------------------------------------------------------
+    role: flag
+    model_use: excluded-leakage
+    leakage_justification: Identifies whether the flight flew or was cancelled/diverted.
+      Known only post-event; leaks flight execution outcome.
   ORIGIN_AIRPORT_RAW:
-    role: "flag"
-    model_use: "audit"
-    description: "Original uncleaned raw origin airport string preserved for data lineage."
+    role: flag
+    model_use: audit
+    description: Original uncleaned raw origin airport string preserved for data lineage.
   DESTINATION_AIRPORT_RAW:
-    role: "flag"
-    model_use: "audit"
-    description: "Original uncleaned raw destination airport string preserved for data lineage."
+    role: flag
+    model_use: audit
+    description: Original uncleaned raw destination airport string preserved for data
+      lineage.
   ORIGIN_ID_MAPPED:
-    role: "flag"
-    model_use: "audit"
-    description: "Audit flag (1 if 5-digit DOT code was mapped to 3-letter IATA code, 0 otherwise)."
+    role: flag
+    model_use: audit
+    description: Audit flag (1 if 5-digit DOT code was mapped to 3-letter IATA code,
+      0 otherwise).
   DEST_ID_MAPPED:
-    role: "flag"
-    model_use: "audit"
-    description: "Audit flag (1 if 5-digit DOT code was mapped to 3-letter IATA code, 0 otherwise)."
+    role: flag
+    model_use: audit
+    description: Audit flag (1 if 5-digit DOT code was mapped to 3-letter IATA code,
+      0 otherwise).
   ORIGIN_UNMAPPED:
-    role: "flag"
-    model_use: "audit"
-    description: "Data quality flag (1 if 5-digit DOT code was absent from master airport mapping dictionary)."
+    role: flag
+    model_use: audit
+    description: Data quality flag (1 if 5-digit DOT code was absent from master airport
+      mapping dictionary).
   DEST_UNMAPPED:
-    role: "flag"
-    model_use: "audit"
-    description: "Data quality flag (1 if 5-digit DOT code was absent from master airport mapping dictionary)."
+    role: flag
+    model_use: audit
+    description: Data quality flag (1 if 5-digit DOT code was absent from master airport
+      mapping dictionary).
   HAS_2400_TIME:
-    role: "flag"
-    model_use: "audit"
-    description: "Data quality flag (1 if any time column contained non-standard midnight 2400 normalized to 0000)."
+    role: flag
+    model_use: audit
+    description: Data quality flag (1 if any time column contained non-standard midnight
+      2400 normalized to 0000).
   DUP_NATURAL_KEY:
-    role: "flag"
-    model_use: "audit"
-    description: "Data quality flag (1 if row shares natural flight key with another record)."
+    role: flag
+    model_use: audit
+    description: Data quality flag (1 if row shares natural flight key with another
+      record).

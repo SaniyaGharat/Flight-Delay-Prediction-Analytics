@@ -2,7 +2,7 @@
 src/processing/write_analytics_report.py - Generates Phase 5 Insights Report from computed analytics tables.
 
 Outputs output/analytics/phase5_insights.md entirely populated from dynamically computed values:
-- Top/bottom 10 airlines by on_time_rate
+- Top/bottom 5 airlines by on_time_rate (non-overlapping)
 - Best/worst 5 months
 - Worst 5 and best 5 departure hours
 - Busiest 10 origin airports (with delay rate)
@@ -72,9 +72,9 @@ def generate_insights_report():
         df_segment = spark.read.parquet(f"{analytics_base}/kpi_by_segment")
         df_canc_airline = spark.read.parquet(f"{analytics_base}/cancellations_by_reason_airline")
 
-        # 1. Airlines by on_time_rate (top 10 and bottom 10 of 14)
-        top10_airlines = df_airline.orderBy(F.desc("on_time_rate"), F.desc("flown_flights")).limit(10).collect()
-        bottom10_airlines = df_airline.orderBy(F.asc("on_time_rate"), F.desc("flown_flights")).limit(10).collect()
+        # 1. Airlines by on_time_rate: Top 5 and Bottom 5 (mutually exclusive)
+        top5_airlines = df_airline.orderBy(F.desc("on_time_rate"), F.desc("flown_flights")).limit(5).collect()
+        bottom5_airlines = df_airline.orderBy(F.asc("on_time_rate"), F.desc("flown_flights")).limit(5).collect()
 
         # 2. Months (best 5 and worst 5 by arr_delay_rate_15)
         best5_months = df_month.orderBy(F.asc("arr_delay_rate_15")).limit(5).collect()
@@ -85,10 +85,12 @@ def generate_insights_report():
         worst5_hours = df_hour.orderBy(F.desc("arr_delay_rate_15")).limit(5).collect()
 
         # 4. Busiest 10 Origin Airports
-        busiest10_airports = df_airport.filter(F.col("ORIGIN_AIRPORT") != "UNMAPPED")             .orderBy(F.desc("total_flights")).limit(10).collect()
+        busiest10_airports = df_airport.filter(F.col("ORIGIN_AIRPORT") != "UNMAPPED") \
+            .orderBy(F.desc("total_flights")).limit(10).collect()
 
         # 5. Worst 10 Routes (>= 500 flown)
-        worst10_routes = df_route.filter((F.col("meets_min_volume") == 1) & (F.col("ROUTE") != "UNMAPPED"))             .orderBy(F.desc("arr_delay_rate_15"), F.desc("flown_flights")).limit(10).collect()
+        worst10_routes = df_route.filter((F.col("meets_min_volume") == 1) & (F.col("ROUTE") != "UNMAPPED")) \
+            .orderBy(F.desc("arr_delay_rate_15"), F.desc("flown_flights")).limit(10).collect()
 
         # 6. Overall Cause Shares
         # (Already in t_overall)
@@ -101,7 +103,10 @@ def generate_insights_report():
         weekend_1 = seg_rows.get(("IS_WEEKEND", "1"))
 
         # 8. Cancellation Reason Shares overall
-        canc_summary = df_canc_airline.groupBy("CANCELLATION_REASON", "CANCELLATION_REASON_DESC")             .agg(F.sum("cancelled_flights").alias("cnt"))             .withColumn("share", F.round(F.col("cnt") / F.lit(t_overall["cancelled_flights"]), 6))             .orderBy(F.desc("cnt")).collect()
+        canc_summary = df_canc_airline.groupBy("CANCELLATION_REASON", "CANCELLATION_REASON_DESC") \
+            .agg(F.sum("cancelled_flights").alias("cnt")) \
+            .withColumn("share", F.round(F.col("cnt") / F.lit(t_overall["cancelled_flights"]), 6)) \
+            .orderBy(F.desc("cnt")).collect()
 
         # 9. Load measured runtimes from logs/metrics
         metrics_dir = PROJECT_ROOT / "logs" / "metrics"
@@ -143,17 +148,17 @@ def generate_insights_report():
         # Section 2: Airline Rankings
         md.append("## 2. Airline On-Time Performance")
         md.append("")
-        md.append("### Top 10 Airlines by On-Time Rate")
+        md.append("### Top 5 Airlines by On-Time Rate")
         md.append("| Rank | Airline | Name | Total Flights | Flown | On-Time Rate | Arr Delay Rate (>=15m) | Cancel Rate |")
         md.append("| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |")
-        for i, r in enumerate(top10_airlines, 1):
+        for i, r in enumerate(top5_airlines, 1):
             md.append(f"| {i} | `{r['AIRLINE']}` | {r['AIRLINE_NAME']} | {r['total_flights']:,} | {r['flown_flights']:,} | **{r['on_time_rate']*100:.2f}%** | {r['arr_delay_rate_15']*100:.2f}% | {r['cancel_rate']*100:.2f}% |")
         md.append("")
 
-        md.append("### Bottom Airlines by On-Time Rate (Highest Delays)")
+        md.append("### Bottom 5 Airlines by On-Time Rate (Highest Delays)")
         md.append("| Rank | Airline | Name | Total Flights | Flown | On-Time Rate | Arr Delay Rate (>=15m) | Cancel Rate |")
         md.append("| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |")
-        for i, r in enumerate(bottom10_airlines, 1):
+        for i, r in enumerate(bottom5_airlines, 1):
             md.append(f"| {i} | `{r['AIRLINE']}` | {r['AIRLINE_NAME']} | {r['total_flights']:,} | {r['flown_flights']:,} | **{r['on_time_rate']*100:.2f}%** | {r['arr_delay_rate_15']*100:.2f}% | {r['cancel_rate']*100:.2f}% |")
         md.append("")
 
@@ -239,7 +244,7 @@ def generate_insights_report():
         # Section 7: Caveats (Static Section - No Numbers)
         md.append("## 7. Caveats")
         md.append("")
-        md.append("- **Inferred Airport Codes**: October 2015 airport identifiers in the raw BTS dataset were recorded as DOT numeric IDs rather than standard 3-letter IATA codes. Codes were reconstructed using multi-month tail-number itineraries, resolving 296 of 307 numeric IDs; flights associated with the remaining 11 unmapped numeric IDs are explicitly tracked in separate UNMAPPED buckets.")
+        md.append("- **Inferred Airport Codes**: October airport codes were inferred by matching flights across months on airline, flight number, scheduled times and distance (296 of 307 IDs mapped; 11 unmapped flagged).")
         md.append("- **Single Year Data**: All aggregations and observations represent calendar year 2015 only and may be influenced by specific severe weather disruptions, airline operations, or merger transitions unique to that year.")
         md.append("- **Delay Attribution Threshold**: Cause delay minutes (Airline, Late Aircraft, NAS, Weather, Security) are only captured by DOT reporting guidelines for flights experiencing arrival delays of 15 minutes or greater. Cause breakdown analysis is restricted to rows meeting this condition.")
         md.append("- **Volume Filtering on Rankings**: Airport and route performance rankings apply minimum flight volume thresholds (1,000 flown flights for airports, 500 flown flights for routes) to prevent low-volume sample noise from distorting quality rankings.")
