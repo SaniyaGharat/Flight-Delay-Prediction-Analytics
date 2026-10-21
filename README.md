@@ -227,12 +227,13 @@ Data was split chronologically by month, persisted to HDFS at processed/ml/datas
 
 ### 4. Benchmark Models & Performance
 Models were tuned on Validation only, threshold-calibrated on Validation, and evaluated on Test:
-| Model / Baseline | Test AUC-ROC | Test AUC-PR | Test Precision | Test Recall | Test F1 | Test Accuracy |
-|---|---|---|---|---|---|---|
-| **Majority Baseline** | 0.5000 | 0.1795 | 0.0000 | 0.0000 | 0.0000 | 82.05% |
-| **Historical Rate Baseline** | 0.6075 | 0.2402 | 0.2334 | 0.5794 | 0.3326 | 72.82% |
-| **Logistic Regression (Balanced)** | **0.6069** | **0.2387** | 0.2303 | 0.5994 | **0.3328** | 56.85% |
-| **GBT Classifier (Sampled)** | **0.5881** | **0.2218** | 0.2195 | 0.6095 | **0.3228** | 53.64% |
+
+| Model | AUC-ROC | AUC-PR | Precision | Recall | F1 |
+|---|---|---|---|---|---|
+| Logistic regression | 0.6083 | 0.2400 | 23.6% | 54.2% | 0.329 |
+| GBT (1M-row sample) | 0.6207 | 0.2516 | 23.9% | 57.2% | 0.337 |
+
+*Note: Schedule-only features give weak prediction, because weather and inbound-aircraft delay aren’t in the dataset.*
 
 - **Leakage Audit**: Both model AUC-ROCs are below the 0.85 leakage threshold, confirming clean pre-departure signal without leakage of actual departure/airborne metrics.
 - **Seasonal Breakdown (Test)**:
