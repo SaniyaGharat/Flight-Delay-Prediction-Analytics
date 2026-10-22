@@ -1,0 +1,139 @@
+// ==============================================================================
+// PowerBI Core DAX Measures
+// Flight Delay Prediction and Analytics Platform
+// Note: All rates and ratios use safe DIVIDE with explicit zero-handling.
+// ==============================================================================
+
+// ------------------------------------------------------------------------------
+// Base Additive Aggregations
+// ------------------------------------------------------------------------------
+
+Total Flights = 
+SUM(fact_daily_airline[total_flights])
+
+Flown Flights = 
+SUM(fact_daily_airline[flown_flights])
+
+Cancelled Flights = 
+SUM(fact_daily_airline[cancelled_flights])
+
+Diverted Flights = 
+SUM(fact_daily_airline[diverted_flights])
+
+Delayed Arrival Flights 15 = 
+SUM(fact_daily_airline[delayed_arr_15])
+
+Delayed Departure Flights 15 = 
+SUM(fact_daily_airline[delayed_dep_15])
+
+Sum Arrival Delay Minutes = 
+SUM(fact_daily_airline[sum_arr_delay_min])
+
+Sum Departure Delay Minutes = 
+SUM(fact_daily_airline[sum_dep_delay_min])
+
+Sum Delay Minutes Positive = 
+SUM(fact_daily_airline[sum_delay_minutes_pos])
+
+// ------------------------------------------------------------------------------
+// Operational Rates and Ratios (DIVIDE-based)
+// ------------------------------------------------------------------------------
+
+Cancel Rate = 
+DIVIDE([Cancelled Flights], [Total Flights], 0)
+
+Divert Rate = 
+DIVIDE([Diverted Flights], [Total Flights], 0)
+
+Arr Delay Rate 15 = 
+DIVIDE([Delayed Arrival Flights 15], [Flown Flights], 0)
+
+On-Time Rate = 
+1 - [Arr Delay Rate 15]
+
+Dep Delay Rate 15 = 
+DIVIDE([Delayed Departure Flights 15], [Flown Flights], 0)
+
+Avg Arr Delay Min = 
+DIVIDE([Sum Arrival Delay Minutes], [Flown Flights], 0)
+
+Avg Delay When Delayed = 
+DIVIDE([Sum Delay Minutes Positive], [Delayed Arrival Flights 15], 0)
+
+// ------------------------------------------------------------------------------
+// Delay Cause Minutes and Share Measures
+// ------------------------------------------------------------------------------
+
+Total Cause Delay Minutes = 
+SUM(fact_cause_daily_airline[MINUTES])
+
+Air System Delay Minutes = 
+CALCULATE(
+    SUM(fact_cause_daily_airline[MINUTES]),
+    fact_cause_daily_airline[CAUSE] = "Air System"
+)
+
+Security Delay Minutes = 
+CALCULATE(
+    SUM(fact_cause_daily_airline[MINUTES]),
+    fact_cause_daily_airline[CAUSE] = "Security"
+)
+
+Airline Delay Minutes = 
+CALCULATE(
+    SUM(fact_cause_daily_airline[MINUTES]),
+    fact_cause_daily_airline[CAUSE] = "Airline"
+)
+
+Late Aircraft Delay Minutes = 
+CALCULATE(
+    SUM(fact_cause_daily_airline[MINUTES]),
+    fact_cause_daily_airline[CAUSE] = "Late Aircraft"
+)
+
+Weather Delay Minutes = 
+CALCULATE(
+    SUM(fact_cause_daily_airline[MINUTES]),
+    fact_cause_daily_airline[CAUSE] = "Weather"
+)
+
+Air System Delay Share = 
+DIVIDE([Air System Delay Minutes], [Total Cause Delay Minutes], 0)
+
+Security Delay Share = 
+DIVIDE([Security Delay Minutes], [Total Cause Delay Minutes], 0)
+
+Airline Delay Share = 
+DIVIDE([Airline Delay Minutes], [Total Cause Delay Minutes], 0)
+
+Late Aircraft Delay Share = 
+DIVIDE([Late Aircraft Delay Minutes], [Total Cause Delay Minutes], 0)
+
+Weather Delay Share = 
+DIVIDE([Weather Delay Minutes], [Total Cause Delay Minutes], 0)
+
+// ------------------------------------------------------------------------------
+// Origin vs Destination Role-Playing Airport Filtering Measures
+// ------------------------------------------------------------------------------
+
+Flights by Origin Airport = 
+SUM(fact_daily_origin[total_flights])
+
+Flights by Destination Airport = 
+CALCULATE(
+    SUM(fact_daily_dest[total_flights]),
+    USERELATIONSHIP(fact_daily_dest[DEST_AIRPORT], dim_airport[code])
+)
+
+Arr Delay Rate 15 by Destination = 
+DIVIDE(
+    CALCULATE(
+        SUM(fact_daily_dest[delayed_arr_15]),
+        USERELATIONSHIP(fact_daily_dest[DEST_AIRPORT], dim_airport[code])
+    ),
+    CALCULATE(
+        SUM(fact_daily_dest[flown_flights]),
+        USERELATIONSHIP(fact_daily_dest[DEST_AIRPORT], dim_airport[code])
+    ),
+    0
+)

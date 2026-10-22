@@ -1,0 +1,29 @@
+{
+  "split": {
+    "train": "January-September 2015",
+    "validation": "October 2015",
+    "test": "November-December 2015",
+    "test_rows": 932084,
+    "test_delayed": 167343
+  },
+  "models": [
+    {
+      "name": "Logistic Regression",
+      "auc_roc": 0.6083,
+      "auc_pr": 0.24,
+      "tn": 471839,
+      "fp": 292902,
+      "fn": 76732,
+      "tp": 90611
+    },
+    {
+      "name": "Gradient Boosted Trees",
+      "auc_roc": 0.6207,
+      "auc_pr": 0.2516,
+      "tn": 459181,
+      "fp": 305560,
+      "fn": 71669,
+      "tp": 95674
+    }
+  ]
+}

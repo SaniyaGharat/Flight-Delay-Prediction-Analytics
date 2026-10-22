@@ -38,3 +38,15 @@ Thumbs.db
 .env.local
 check6.py
 scratch/
+scripts/verify/phase5b/
+scripts/verify/phase6/
+scripts/verify/phase6b/
+check6.py
+frontend/node_modules/
+frontend/dist/
+frontend/.env*
+frontend/node_modules/
+frontend/dist/
+frontend/.env*
+frontend/public/data/*.csv
+output/powerbi/*.csv
