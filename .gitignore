@@ -50,3 +50,6 @@ frontend/dist/
 frontend/.env*
 frontend/public/data/*.csv
 output/powerbi/*.csv
+scripts/verify/phase5b/
+scripts/verify/phase6/
+scripts/verify/phase6b/

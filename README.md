@@ -51,16 +51,113 @@ flight-delay-analytics/
 
 ---
 
+## 🏛️ End-to-End System Architecture
+
+The platform implements a modern, decoupled Big Data architecture designed to ingest, process, model, and serve 5.82 million domestic flight records:
+
+```mermaid
+flowchart TD
+    subgraph S1 ["1. Distributed Storage Layer (HDFS 3.3.6)"]
+        RawCSV["Raw DOT BTS CSVs<br/>(5,819,079 rows)"] -->|ingest_to_hdfs.py| HDFSRaw[("HDFS /raw/<br/>SHA-256 Verified")]
+        HDFSRaw --> HDFSClean[("HDFS /processed/flights_clean<br/>(Snappy Parquet, Month-Partitioned)")]
+        HDFSClean --> HDFSEnriched[("HDFS /processed/flights_enriched<br/>(70 Columns, 0 Row Fanout)")]
+        HDFSEnriched --> HDFSML[("HDFS /processed/ml/<br/>Trained Models & Test Predictions")]
+    end
+
+    subgraph S2 ["2. Distributed Processing Engine (PySpark 3.5.3)"]
+        Clean["Data Cleaning & Type Coercion<br/>(clean_flights.py)"]
+        MapAirport["Airport ID Schedule Matching<br/>(build_airport_map.py)"]
+        Enrich["Dimension Broadcast Joins<br/>(build_enriched.py)"]
+        OLAP["OLAP Aggregations<br/>(build_powerbi_model.py)"]
+        ML["MLlib Classification Pipelines<br/>(train_models.py)"]
+    end
+
+    subgraph S3 ["3. Analytical Serving & Export Pipeline"]
+        Exports[("output/powerbi/ &<br/>frontend/public/data/")]
+        D1["Conformed Dimensions<br/>(dim_date, dim_airline, dim_airport)"]
+        D2["Atomic Fact Tables<br/>(fact_daily_airline, fact_airline_dow_hour, etc.)"]
+        D3["Pre-Computed Totals<br/>(airport_origin_totals, fact_airline_origin_hour)"]
+        D4["ML Evaluation Metadata<br/>(ml_summary.json)"]
+    end
+
+    subgraph S4 ["4. Dashboard & Web Application Layer"]
+        API["FastAPI REST Backend<br/>(src/api/server.py:8000)<br/>Health, KPIs, /api/predict Historical Lookups"]
+        UI["Editorial React Dashboard<br/>(React 19, TypeScript, TanStack Start, Recharts)<br/>Overview, Airlines, Airports, Causes, Prediction, Pipeline"]
+    end
+
+    HDFSRaw --> Clean
+    Clean --> MapAirport
+    MapAirport --> Enrich
+    Enrich --> HDFSEnriched
+    HDFSEnriched --> OLAP
+    HDFSEnriched --> ML
+    ML --> HDFSML
+    OLAP --> Exports
+    Exports --> D1 & D2 & D3 & D4
+    D1 & D2 & D3 & D4 --> API
+    D1 & D2 & D3 & D4 --> UI
+    API <-->|/api/predict| UI
+```
+
+### 1. Distributed Storage Layer (Apache Hadoop HDFS)
+- **Engine & Topology**: Apache Hadoop HDFS 3.3.6 running in pseudo-distributed mode on WSL2 (Ubuntu 22.04 LTS), configured with NameNode, DataNode, and SecondaryNameNode on port 9000.
+- **Raw Data Ingestion (`/user/${USER}/flight_delay/raw/`)**: Stores immutable raw DOT BTS CSVs (`flights.csv`, `airports.csv`, `airlines.csv`) with automated SHA-256 byte-for-byte checksum verification.
+- **Processed & Analytics Storage (`/user/${USER}/flight_delay/processed/`)**:
+  - `flights_clean`: Snappy-compressed Parquet partitioned by `MONTH` (152.9 MB, 74.2% compression ratio).
+  - `flights_enriched`: Full 70-column analytical baseline partitioned by `MONTH` (249.3 MB Snappy Parquet, 1 file per month).
+  - `analytics/`: 19 pre-aggregated OLAP tables stored as single-part Parquet files (`coalesce(1)`).
+  - `ml/`: Chronological dataset splits (`dataset/{train,val,test}`), persisted Spark MLlib model binaries (`models/{logistic_regression,gbt}`), and 932,084 test evaluation predictions (`predictions_test`).
+
+### 2. Distributed Processing Engine (Apache Spark / PySpark)
+- **Runtime Tuning**: PySpark 3.5.3 executed with OpenJDK 17 under session timezone `UTC`, tuned for WSL2: `master: local[6]`, `driver_memory: 5g`, `executor_memory: 5g`, `shuffle_partitions: 24`, and `spark.hadoop.dfs.replication=1`.
+- **Pipeline Stages**:
+  1. **Ingestion & Validation (`src/ingestion/`)**: Automated staging and SHA-256 hash assertions against raw local files.
+  2. **Data Cleaning (`src/processing/clean_flights.py`)**: Strict schema casting (20 integer columns), `"2400"` time normalization to `"0000"`, operational status tagging, and month-partitioned deduplication (5,819,079 rows preserved).
+  3. **October Airport ID Inversion (`src/processing/build_airport_map.py`)**: Reconstructed missing 3-letter IATA codes for October 2015 by schedule-matching against non-October flights (296 of 307 IDs mapped, 0 ambiguous, 11 unmapped flagged).
+  4. **Enrichment & Dimension Modeling (`src/processing/build_enriched.py`)**: Broadcast left joins against lookup tables, asserting zero row loss (exact 1:1 row preservation across 5,819,079 flights). Derives pre-departure features (`ROUTE`, `SCHED_DEP_HOUR`, `DEP_TIME_BLOCK`, `DISTANCE_BAND`, holiday windows).
+  5. **Delay Analytics Aggregation (`src/processing/build_analytics.py`, `build_powerbi_model.py`)**: Generates conformed additive metrics across airlines, airports, routes, dates, and causes.
+  6. **Machine Learning Pipelines (`src/ml/train_models.py`)**: Spark MLlib Pipeline stages (`StringIndexer`, `OneHotEncoder`, `VectorAssembler`, `StandardScaler`) with a strict automated feature guard (`src/ml/guard.py`) preventing lookahead bias and target leakage.
+
+### 3. Analytical Serving & Export Pipeline
+- **Star-Schema Dimensional Model**: Designed for sub-second query performance and zero-dependency analytics, exported to `output/powerbi/` and synchronized to `frontend/public/data/`:
+  - **Dimensions**: `dim_date.csv` (365 days, holidays), `dim_airline.csv` (14 carriers), `dim_airport.csv` (323 airports with lat/lon and `UNMAPPED`).
+  - **Fact Tables**: `fact_daily_airline.csv`, `fact_airline_dow_hour.csv`, `fact_route_month.csv`, `fact_cause_daily_airline.csv`, `fact_cancel_daily_airline_reason.csv`.
+  - **Aggregated Totals**: `airport_origin_totals.csv` and `airport_dest_totals.csv` with volume rankings.
+  - **Segment Level Facts**: `fact_airline_origin_hour.csv` (14,473 carrier x origin airport x departure hour segments for historical delay rate lookups).
+  - **ML Metadata**: `ml_summary.json` containing chronological split metrics, confusion matrices, and model comparison parameters with plain-hyphen formatting.
+- **Automated Synchronization**: [src/export/sync_frontend.py](file:///c:/Users/Saniya%20Gharat/Desktop/Projects/bda/flight-delay-analytics/src/export/sync_frontend.py) and `npm run sync-data` validate and sync exported tables directly to the frontend application directory.
+
+### 4. Dashboard & Web Application Layer
+- **Frontend Architecture**: Built with React 19, TypeScript, Vite, TanStack Router, TanStack Query, Tailwind CSS, shadcn/ui, Recharts, and TopoJSON/D3.
+  - **Calm Editorial Aesthetic**: Warm off-white background (`#FAF8F5`), white cards with subtle borders, muted pastel color palette (sage, dusty blue, soft peach, lavender grey, butter, blush), and "DM Sans" / "Fraunces" typography.
+  - **Client-Side Computation**: Static CSVs loaded via PapaParse at runtime from `/data/` and cached indefinitely with TanStack Query. All rates and metrics are computed dynamically in the browser from additive counts.
+  - **6 Interactive Pages**:
+    - **01 · Overview**: Executive KPI cards, monthly delay/volume trend lines, 2015 calendar heatmap, holiday window comparisons.
+    - **02 · Airlines**: Carrier on-time rankings, carrier comparison table, airline x month matrix, hour-of-day x weekday heatmap.
+    - **03 · Airports & Routes**: US TopoJSON bubble map with delay-coded bubbles, searchable route table, top/bottom airport rankings.
+    - **04 · Causes**: BTS delay cause share donut, stacked monthly cause minutes, cancellation reason breakdown (carrier, weather, NAS, security).
+    - **05 · Prediction**: Schedule-only model evaluation benchmarks (Logistic Regression vs. GBT) with confusion matrices, plus an interactive **Historical delay rate (not a model forecast)** lookup tool.
+    - **06 · Pipeline**: Interactive visual architecture diagram, stage-by-stage row count reconciliation, and data quality disclosures.
+- **Backend REST API (FastAPI)**:
+  - Service in [src/api/server.py](file:///c:/Users/Saniya%20Gharat/Desktop/Projects/bda/flight-delay-analytics/src/api/server.py) listening on `http://localhost:8000` with CORS and Vite proxy configuration (`/api`).
+  - `/api/health`: Service health and dataset row count validation.
+  - `/api/kpi/summary`: Executive headline metrics.
+  - `/api/predict`: Ground-truth historical delay rate lookup ($\text{delayed\_arr\_15} / \text{flown\_flights}$) for carrier, origin airport, and departure hour; displays `"no data"` when flown flights are below 100.
+
+---
+
 ## 🛠️ Technology Stack & Versions
 
 - **Execution Engine**: Apache Spark (PySpark 3.5.3)
 - **Distributed Storage**: Apache Hadoop HDFS 3.3.6 (pseudo-distributed mode, replication factor 1)
 - **Environment**: Ubuntu 22.04 LTS on WSL2 (Windows Subsystem for Linux)
-- **Python**: Python 3.11.17 (dedicated virtual environment `.venv`)
+- **Python**: Python 3.11.17 (WSL `.venv`) / Python 3.13 (Windows Host)
 - **Java Virtual Machine**: OpenJDK 17 (`/usr/lib/jvm/java-17-openjdk-amd64`)
-- **Compression & Formats**: Apache Parquet with Snappy compression
-- **Reporting & BI**: Microsoft Power BI Desktop
-- **IDE**: Visual Studio Code
+- **Web & Dashboard**: React 19, TypeScript, Vite, TanStack Router, Tailwind CSS, Recharts
+- **API Server**: FastAPI, Uvicorn, Pydantic, Pandas
+- **Compression & Formats**: Apache Parquet with Snappy compression, CSV, JSON
+- **IDE**: Visual Studio Code / Antigravity IDE
+
 
 ---
 
@@ -247,3 +344,73 @@ Models were tuned on Validation only, threshold-calibrated on Validation, and ev
 - **HDFS Test Predictions**: processed/ml/predictions_test (Parquet, 932,084 rows with labels, probabilities, predictions).
 - **Metrics**: Written to logs/metrics/ml_*.json and HDFS Parquet processed/ml/metrics.
 - **Comprehensive Report**: Dynamically compiled into output/ml/phase6_report.md via src/ml/write_ml_report.py.
+
+---
+
+## 🌐 Phase 7: Frontend Dashboard & Backend Integration
+
+The project includes an editorial React analytics dashboard (`frontend/`) and a FastAPI REST service (`src/api/server.py`) connected to the PySpark analytics layer.
+
+### 1. Architecture & Data Flow
+
+```text
+PySpark OLAP Pipeline (HDFS)
+         │
+         ▼
+src/processing/build_powerbi_model.py
+         │
+         ▼
+output/powerbi/ (CSV / JSON analytical tables)
+         │
+         ▼ (via src/export/sync_frontend.py / npm run sync-data)
+frontend/public/data/
+         ├── dim_date.csv
+         ├── dim_airline.csv
+         ├── fact_daily_airline.csv
+         ├── fact_airline_dow_hour.csv
+         ├── fact_route_month.csv
+         ├── fact_cause_daily_airline.csv
+         ├── fact_cancel_daily_airline_reason.csv
+         ├── airport_origin_totals.csv
+         ├── airport_dest_totals.csv
+         └── ml_summary.json
+         │
+         ▼
+Interactive React Dashboard (Overview, Airlines, Airports & Routes, Causes, Prediction, Pipeline)
+         ▲
+         │ (Optional live REST calls via /api/predict)
+FastAPI Backend Server (src/api/server.py:8000)
+```
+
+### 2. Synchronizing Backend Data to Frontend
+
+To export and sync the latest analytical outputs from the Big Data pipeline directly to the frontend:
+```bash
+# From project root (Windows or WSL)
+python src/export/sync_frontend.py
+
+# Or via npm inside frontend/
+cd frontend
+npm run sync-data
+```
+
+### 3. Running Backend REST API & Frontend Dashboard
+
+1. **Start the Backend API Server**:
+   ```bash
+   # Starts FastAPI on http://localhost:8000
+   python src/api/server.py
+   # Or inside frontend/
+   npm run server:api
+   ```
+   - Health check: `GET http://localhost:8000/api/health`
+   - Real-time delay prediction: `POST http://localhost:8000/api/predict`
+   - KPI metrics: `GET http://localhost:8000/api/kpi/summary`
+
+2. **Start the Frontend Dashboard**:
+   ```bash
+   cd frontend
+   npm run dev
+   ```
+   Open `http://localhost:5173` (or port shown by Vite) in your browser.
+
